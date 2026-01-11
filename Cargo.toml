@@ -1,0 +1,9 @@
+[package]
+name = "miner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cpal = "0.15"
+hound = "3.5"
+global-hotkey = "0.6"
