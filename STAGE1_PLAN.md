@@ -21,13 +21,13 @@ edition = "2021"
 [dependencies]
 cpal = "0.15"           # Audio capture (WASAPI support)
 hound = "3.5"           # WAV file writing
-ctrlc = "3.4"           # Clean Ctrl+C handling
+global-hotkey = "0.6"   # Global hotkey detection (Ctrl+Alt+C)
 ```
 
 **Why these versions:**
 - `cpal 0.15` - Latest stable, good WASAPI loopback support
 - `hound 3.5` - Simple, battle-tested WAV writer
-- `ctrlc 3.4` - Cross-platform signal handling for graceful shutdown
+- `global-hotkey 0.6` - Cross-platform global hotkey, same crate we'll use in Stage 3
 
 ---
 
@@ -39,13 +39,14 @@ ctrlc = "3.4"           # Clean Ctrl+C handling
 ├─────────────────────────────────────────────────────┤
 │  1. Initialize WASAPI loopback device               │
 │  2. Create sample buffer (Vec<f32>)                 │
-│  3. Start audio stream → push samples to buffer     │
-│  4. Wait for Ctrl+C signal                          │
-│  5. Stop stream, write buffer to audio.wav          │
+│  3. Register Ctrl+Alt+C hotkey                      │
+│  4. Start audio stream → push samples to buffer     │
+│  5. Wait for hotkey event                           │
+│  6. Stop stream, write buffer to audio.wav          │
 └─────────────────────────────────────────────────────┘
 ```
 
-For Stage 1, we keep it simple: **single-threaded, no ring buffer yet**. Just capture everything until Ctrl+C, then dump to WAV.
+For Stage 1, we keep it simple: **single-threaded, no ring buffer yet**. Just capture everything until Ctrl+Alt+C, then dump to WAV.
 
 ---
 
@@ -73,10 +74,10 @@ For Stage 1, we keep it simple: **single-threaded, no ring buffer yet**. Just ca
 ### Step 4: Sample Collection
 - Use `Arc<Mutex<Vec<f32>>>` for thread-safe sample storage
 - Audio callback pushes samples to the shared buffer
-- Main thread waits for Ctrl+C
+- Main thread runs event loop waiting for hotkey
 
 ### Step 5: WAV Export
-- On Ctrl+C, stop the stream
+- On Ctrl+Alt+C, stop the stream
 - Create WAV spec from stream config
 - Write all samples using hound
 - Print success message with file path
@@ -102,8 +103,10 @@ polybius/
 // Pseudocode structure
 
 fn main() {
-    // 1. Setup Ctrl+C handler with shutdown flag
-    let running = Arc::new(AtomicBool::new(true));
+    // 1. Setup global hotkey manager
+    let manager = GlobalHotKeyManager::new()?;
+    let hotkey = HotKey::new(Modifiers::CONTROL | Modifiers::ALT, Code::KeyC);
+    manager.register(hotkey)?;
 
     // 2. Get WASAPI host and default output device
     let host = cpal::host_from_id(HostId::Wasapi)?;
@@ -116,18 +119,23 @@ fn main() {
     let samples = Arc::new(Mutex::new(Vec::new()));
 
     // 5. Build loopback input stream
-    let stream = device.build_input_stream_from_loopback(
+    let stream = device.build_input_stream(
         &config,
         |data: &[f32]| { samples.push(data); },
         |err| { eprintln!("Error: {}", err); },
     )?;
 
-    // 6. Start stream and wait
+    // 6. Start stream and run event loop
     stream.play()?;
-    println!("Recording... Press Ctrl+C to stop");
+    println!("Recording... Press Ctrl+Alt+C to stop");
 
-    while running.load(Ordering::Relaxed) {
-        thread::sleep(Duration::from_millis(100));
+    // Event loop - wait for hotkey
+    loop {
+        if let Ok(event) = GlobalHotKeyEvent::receiver().recv() {
+            if event.id == hotkey.id() {
+                break;
+            }
+        }
     }
 
     // 7. Stop and save
@@ -161,9 +169,9 @@ fn main() {
 ## Success Criteria
 
 1. ✅ Run `cargo run`
-2. ✅ See "Recording... Press Ctrl+C to stop"
+2. ✅ See "Recording... Press Ctrl+Alt+C to stop"
 3. ✅ Play a YouTube video for ~5 seconds
-4. ✅ Press Ctrl+C
+4. ✅ Press Ctrl+Alt+C
 5. ✅ See "Saved audio.wav"
 6. ✅ Open audio.wav in any media player - hear the YouTube audio
 
