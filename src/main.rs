@@ -1,10 +1,16 @@
-//! The Miner - Stage 2: Ring Buffer Recording
+//! The Miner v0.2.1 - Stage 2: Ring Buffer Recording
 //!
 //! Records system audio continuously via WASAPI loopback, keeping only the
 //! last 10 seconds in a ring buffer. Press Ctrl+Alt+C to save the buffer.
+//!
+//! Architecture notes:
+//! - Producer has exclusive ownership by the audio thread (no mutex/priority inversion)
+//! - Buffer is peeked, not drained, preserving full context for rapid successive saves
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat};
@@ -20,8 +26,8 @@ use ringbuf::{
 const BUFFER_DURATION_SECS: usize = 10;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("The Miner v0.2 - Stage 2 (Ring Buffer)");
-    println!("======================================\n");
+    println!("The Miner v0.2.1 - Stage 2 (Ring Buffer)");
+    println!("========================================\n");
 
     // 1. Setup global hotkey (Ctrl+Alt+C)
     let manager = GlobalHotKeyManager::new()?;
@@ -66,25 +72,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ring = HeapRb::<f32>::new(buffer_size);
     let (producer, consumer) = ring.split();
 
-    // Wrap producer in Arc for sharing with audio thread
-    // We use a simple wrapper since ringbuf producers need mut access
-    let producer = Arc::new(std::sync::Mutex::new(producer));
-    let producer_clone = producer.clone();
-
     // 7. Flag to signal when to stop
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
 
     // 8. Build input stream based on sample format
+    // Producer is moved directly into the audio callback - no mutex needed!
+    // This eliminates priority inversion risk since the audio thread has exclusive ownership.
     let stream = match sample_format {
         SampleFormat::F32 => {
-            build_input_stream::<f32>(&device, &config.into(), producer_clone, running_clone)?
+            build_input_stream::<f32>(&device, &config.into(), producer, running_clone)?
         }
         SampleFormat::I16 => {
-            build_input_stream::<i16>(&device, &config.into(), producer_clone, running_clone)?
+            build_input_stream::<i16>(&device, &config.into(), producer, running_clone)?
         }
         SampleFormat::U16 => {
-            build_input_stream::<u16>(&device, &config.into(), producer_clone, running_clone)?
+            build_input_stream::<u16>(&device, &config.into(), producer, running_clone)?
         }
         format => return Err(format!("Unsupported sample format: {:?}", format).into()),
     };
@@ -97,8 +100,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("[RECORDING] Press Ctrl+Alt+C to save buffer to WAV\n");
 
-    // Store consumer in a mutex so we can access it after the loop
-    let consumer = std::sync::Mutex::new(consumer);
+    // Store consumer for access in event loop
+    // Note: Consumer stays on main thread only - no mutex needed for single-threaded access
+    let mut consumer = consumer;
 
     // 10. Event loop - wait for hotkey
     loop {
@@ -106,10 +110,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if event.id == hotkey.id() && event.state == HotKeyState::Pressed {
                 println!("\n[SAVE] Hotkey pressed, saving buffer...");
 
-                // Drain samples from ring buffer
+                // PEEK at samples without consuming - this preserves the buffer!
+                // The buffer acts as a sliding window, not a queue to be drained.
+                // This allows rapid successive saves to each capture the full context.
                 let samples: Vec<f32> = {
-                    let mut cons = consumer.lock().unwrap();
-                    cons.pop_iter().collect()
+                    let (head, tail) = consumer.as_slices();
+                    // Ring buffer data may be split across two contiguous regions
+                    let mut samples = Vec::with_capacity(head.len() + tail.len());
+                    samples.extend_from_slice(head);
+                    samples.extend_from_slice(tail);
+                    samples
                 };
 
                 let duration_secs = samples.len() as f32 / (sample_rate as f32 * channels as f32);
@@ -148,16 +158,22 @@ fn generate_filename() -> String {
 }
 
 /// Build an input stream that captures audio and stores samples in the ring buffer
+///
+/// The producer is moved into the audio callback, giving the audio thread
+/// exclusive ownership. This eliminates priority inversion - no mutex contention.
 fn build_input_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    producer: Arc<std::sync::Mutex<ringbuf::HeapProd<f32>>>,
+    producer: ringbuf::HeapProd<f32>,
     running: Arc<AtomicBool>,
 ) -> Result<cpal::Stream, cpal::BuildStreamError>
 where
     T: Sample + cpal::SizedSample,
     f32: FromSample<T>,
 {
+    // Producer is moved into closure - audio thread has exclusive ownership
+    let mut producer = producer;
+
     device.build_input_stream(
         config,
         move |data: &[T], _: &cpal::InputCallbackInfo| {
@@ -165,12 +181,10 @@ where
                 return;
             }
 
-            if let Ok(mut prod) = producer.try_lock() {
-                for &sample in data {
-                    let sample_f32 = f32::from_sample(sample);
-                    // Push with overwrite - if buffer is full, oldest sample is discarded
-                    prod.push_overwrite(sample_f32);
-                }
+            for &sample in data {
+                let sample_f32 = f32::from_sample(sample);
+                // Push with overwrite - if buffer is full, oldest sample is discarded
+                producer.push_overwrite(sample_f32);
             }
         },
         |err| eprintln!("[ERROR] Audio stream error: {}", err),
