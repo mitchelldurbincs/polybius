@@ -102,6 +102,46 @@ impl Screenshot {
     pub fn as_rgba_bytes(&self) -> &[u8] {
         &self.data
     }
+
+    /// Crop the screenshot to a specific region
+    pub fn crop(&self, x: i32, y: i32, width: u32, height: u32) -> Result<Self, ScreenshotError> {
+        // Clamp coordinates to valid bounds
+        let x = x.max(0) as u32;
+        let y = y.max(0) as u32;
+
+        // Ensure we don't go out of bounds
+        if x >= self.width || y >= self.height {
+            return Err(ScreenshotError::CaptureError(
+                "Crop region is outside image bounds".to_string(),
+            ));
+        }
+
+        // Calculate actual crop dimensions
+        let crop_width = width.min(self.width - x);
+        let crop_height = height.min(self.height - y);
+
+        if crop_width == 0 || crop_height == 0 {
+            return Err(ScreenshotError::CaptureError(
+                "Crop region has zero size".to_string(),
+            ));
+        }
+
+        // Extract cropped pixel data
+        let mut cropped_data = Vec::with_capacity((crop_width * crop_height * 4) as usize);
+
+        for row in 0..crop_height {
+            let src_row = y + row;
+            let src_start = ((src_row * self.width + x) * 4) as usize;
+            let src_end = src_start + (crop_width * 4) as usize;
+            cropped_data.extend_from_slice(&self.data[src_start..src_end]);
+        }
+
+        Ok(Screenshot {
+            width: crop_width,
+            height: crop_height,
+            data: cropped_data,
+        })
+    }
 }
 
 // Windows implementation using win-screenshot

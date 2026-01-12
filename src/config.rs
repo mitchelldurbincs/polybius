@@ -2,8 +2,18 @@
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+
+/// A capture region relative to a window
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureRegion {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
 
 /// Main configuration struct
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +51,12 @@ pub struct HotkeyConfig {
     /// Hotkey for saving 60 seconds
     #[serde(default = "default_hotkey_60s")]
     pub save_60s: String,
+    /// Hotkey for screenshot-only (save + clipboard)
+    #[serde(default = "default_hotkey_screenshot")]
+    pub screenshot: String,
+    /// Hotkey for region selection mode
+    #[serde(default = "default_hotkey_region")]
+    pub region_select: String,
 }
 
 /// Audio capture settings
@@ -81,6 +97,9 @@ pub struct VisionConfig {
     /// Enable JSON metadata output
     #[serde(default = "default_true")]
     pub metadata_enabled: bool,
+    /// Capture regions per window title pattern
+    #[serde(default)]
+    pub regions: HashMap<String, CaptureRegion>,
 }
 
 // Default value functions for serde
@@ -107,6 +126,14 @@ fn default_hotkey_30s() -> String {
 
 fn default_hotkey_60s() -> String {
     "CTRL+ALT+3".to_string()
+}
+
+fn default_hotkey_screenshot() -> String {
+    "CTRL+ALT+S".to_string()
+}
+
+fn default_hotkey_region() -> String {
+    "CTRL+ALT+R".to_string()
 }
 
 fn default_capture_mode() -> String {
@@ -143,6 +170,8 @@ impl Default for HotkeyConfig {
             save_10s: default_hotkey_10s(),
             save_30s: default_hotkey_30s(),
             save_60s: default_hotkey_60s(),
+            screenshot: default_hotkey_screenshot(),
+            region_select: default_hotkey_region(),
         }
     }
 }
@@ -167,6 +196,7 @@ impl Default for VisionConfig {
             ocr_enabled: true,
             ocr_language: default_ocr_language(),
             metadata_enabled: true,
+            regions: HashMap::new(),
         }
     }
 }

@@ -10,15 +10,18 @@
 //! - Ctrl+Alt+3: Save last 60 seconds
 
 mod audio;
+mod clipboard;
 mod config;
 mod hotkeys;
 mod metadata;
 mod notifications;
 mod ocr;
+mod region_overlay;
 mod screenshot;
 mod tray;
 mod vision;
 mod wav;
+mod window_utils;
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -28,7 +31,8 @@ use tray_icon::menu::MenuEvent;
 
 use audio::{AudioCapture, BufferDuration};
 use config::Config;
-use hotkeys::HotkeyManager;
+use hotkeys::{HotkeyAction, HotkeyManager};
+use screenshot::Screenshot;
 use tray::TrayManager;
 use vision::VisionCapture;
 
@@ -40,8 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(all(windows, not(debug_assertions)))]
     hide_console_window();
 
-    // 1. Load configuration
-    let config = Config::load();
+    // 1. Load configuration (mutable for saving regions)
+    let mut config = Config::load();
 
     // Ensure save directory exists
     let save_dir = config.ensure_save_dir()?;
@@ -82,6 +86,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &config.hotkeys.save_10s,
         &config.hotkeys.save_30s,
         &config.hotkeys.save_60s,
+        &config.hotkeys.screenshot,
+        &config.hotkeys.region_select,
         config.audio.buffer_10s,
         config.audio.buffer_30s,
         config.audio.buffer_60s,
@@ -118,10 +124,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
             println!("[DEBUG] Hotkey event received: id={}, state={:?}", event.id, event.state);
             if event.state == HotKeyState::Pressed {
-                if let Some(duration) = hotkeys.duration_for_id(event.id) {
-                    handle_save(&mut audio, &vision, duration, &save_dir, show_notifications)?;
-                } else {
-                    println!("[DEBUG] Unknown hotkey id: {}", event.id);
+                match hotkeys.action_for_id(event.id) {
+                    Some(HotkeyAction::SaveBuffer(duration)) => {
+                        handle_save(&mut audio, &vision, duration, &save_dir, show_notifications, &config)?;
+                    }
+                    Some(HotkeyAction::Screenshot) => {
+                        handle_screenshot_only(&vision, &save_dir, show_notifications, &config)?;
+                    }
+                    Some(HotkeyAction::RegionSelect) => {
+                        handle_region_select(&mut config)?;
+                    }
+                    None => {
+                        println!("[DEBUG] Unknown hotkey id: {}", event.id);
+                    }
                 }
             }
         }
@@ -136,6 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         BufferDuration::Seconds10,
                         &save_dir,
                         show_notifications,
+                        &config,
                     )?;
                 }
                 tray::MENU_SAVE_30S => {
@@ -145,6 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         BufferDuration::Seconds30,
                         &save_dir,
                         show_notifications,
+                        &config,
                     )?;
                 }
                 tray::MENU_SAVE_60S => {
@@ -154,6 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         BufferDuration::Seconds60,
                         &save_dir,
                         show_notifications,
+                        &config,
                     )?;
                 }
                 tray::MENU_PAUSE => {
@@ -195,6 +213,7 @@ fn handle_save(
     duration: BufferDuration,
     save_dir: &PathBuf,
     show_notification: bool,
+    config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("\n[SAVE] Saving {} second buffer...", duration.as_secs());
 
@@ -257,7 +276,12 @@ fn handle_save(
     let mut capture_result = None;
 
     if vision.is_enabled() {
-        match vision.capture() {
+        // Get window title for region lookup
+        let window_title = window_utils::get_foreground_window_info()
+            .map(|info| info.title)
+            .unwrap_or_default();
+
+        match vision.capture_with_region(&window_title, &config.vision.regions) {
             Ok(result) => {
                 // Save screenshot
                 match vision.save_screenshot(&result, &base_path) {
@@ -296,6 +320,103 @@ fn handle_save(
     }
 
     println!("\n[RECORDING] Continuing to record...\n");
+
+    Ok(())
+}
+
+/// Handle screenshot-only hotkey (save + clipboard)
+fn handle_screenshot_only(
+    vision: &VisionCapture,
+    save_dir: &PathBuf,
+    show_notification: bool,
+    config: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("\n[SCREENSHOT] Taking screenshot...");
+
+    if !vision.is_enabled() {
+        println!("[WARN] Vision capture is disabled");
+        if show_notification {
+            notifications::notify_error("Vision capture is disabled");
+        }
+        return Ok(());
+    }
+
+    // Get window info for region lookup
+    let window_info = window_utils::get_foreground_window_info()
+        .map_err(|e| format!("Failed to get window info: {}", e))?;
+
+    // Capture screenshot with region if configured
+    let capture_result = vision.capture_with_region(&window_info.title, &config.vision.regions)?;
+
+    let screenshot = capture_result
+        .screenshot
+        .ok_or("No screenshot captured")?;
+
+    // Generate filename
+    let timestamp = generate_timestamp();
+    let filename = format!("screenshot_{}.png", timestamp);
+    let path = save_dir.join(&filename);
+
+    // Save to file
+    screenshot.save_png(&path)?;
+    println!("[OK] Screenshot saved: {}", path.display());
+
+    // Copy to clipboard
+    match clipboard::copy_to_clipboard(&screenshot) {
+        Ok(()) => println!("[OK] Screenshot copied to clipboard"),
+        Err(e) => eprintln!("[WARN] Failed to copy to clipboard: {}", e),
+    }
+
+    if show_notification {
+        notifications::notify_screenshot_saved(&path);
+    }
+
+    Ok(())
+}
+
+/// Handle region selection hotkey
+fn handle_region_select(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> {
+    println!("\n[REGION] Opening region selection...");
+
+    // Get foreground window info
+    let window_info = window_utils::get_foreground_window_info()
+        .map_err(|e| format!("Failed to get window info: {}", e))?;
+
+    println!("[INFO] Target window: {}", window_info.title);
+
+    // Capture current window screenshot
+    let screenshot = Screenshot::capture_foreground()
+        .map_err(|e| format!("Failed to capture window: {}", e))?;
+
+    // Run region selection overlay
+    match region_overlay::select_region(screenshot, window_info.clone()) {
+        Ok(region_overlay::RegionSelectionResult::Selected(region)) => {
+            println!(
+                "[OK] Region selected: {}x{} at ({}, {})",
+                region.width, region.height, region.x, region.y
+            );
+
+            // Save region to config
+            config
+                .vision
+                .regions
+                .insert(window_info.title.clone(), region);
+
+            if let Err(e) = config.save() {
+                eprintln!("[WARN] Failed to save config: {}", e);
+            } else {
+                println!("[OK] Region saved to config");
+            }
+
+            notifications::notify_region_saved(&window_info.title);
+        }
+        Ok(region_overlay::RegionSelectionResult::Cancelled) => {
+            println!("[INFO] Region selection cancelled");
+        }
+        Err(e) => {
+            eprintln!("[ERROR] Region selection failed: {}", e);
+        }
+    }
 
     Ok(())
 }

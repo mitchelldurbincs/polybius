@@ -3,10 +3,11 @@
 //! Combines screenshot capture and OCR processing into a single
 //! easy-to-use interface with proper error handling.
 
-use crate::config::VisionConfig;
+use crate::config::{CaptureRegion, VisionConfig};
 use crate::metadata::CardMetadata;
 use crate::ocr::{OcrError, OcrProcessor, OcrResult};
 use crate::screenshot::{Screenshot, ScreenshotError};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Vision capture error
@@ -273,4 +274,94 @@ impl VisionCapture {
 
         Ok(())
     }
+
+    /// Capture screenshot with optional region cropping
+    ///
+    /// If a region is configured for the given window title, the screenshot
+    /// will be cropped to that region.
+    pub fn capture_with_region(
+        &self,
+        window_title: &str,
+        regions: &HashMap<String, CaptureRegion>,
+    ) -> Result<CaptureResult, VisionError> {
+        if !self.enabled {
+            return Err(VisionError::Disabled);
+        }
+
+        // Capture screenshot
+        let screenshot = if self.screenshot_enabled {
+            let ss = match &self.capture_mode {
+                CaptureMode::Screen => Screenshot::capture_screen()?,
+                CaptureMode::Foreground => Screenshot::capture_foreground()?,
+                CaptureMode::Window(pattern) => Screenshot::capture_window(pattern)?,
+            };
+
+            // Try to find and apply a region
+            if let Some(region) = find_region_for_window(window_title, regions) {
+                match ss.crop(region.x, region.y, region.width, region.height) {
+                    Ok(cropped) => {
+                        println!(
+                            "[OK] Applied region crop: {}x{} at ({}, {})",
+                            region.width, region.height, region.x, region.y
+                        );
+                        Some(cropped)
+                    }
+                    Err(e) => {
+                        eprintln!("[WARN] Failed to crop to region: {}", e);
+                        Some(ss)
+                    }
+                }
+            } else {
+                Some(ss)
+            }
+        } else {
+            None
+        };
+
+        // Run OCR if enabled and we have a screenshot
+        let ocr_result = if self.ocr_enabled {
+            if let (Some(ref ss), Some(ref processor)) = (&screenshot, &self.ocr_processor) {
+                match processor.process(ss) {
+                    Ok(result) => Some(result),
+                    Err(e) => {
+                        eprintln!("[WARN] OCR processing failed: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(CaptureResult {
+            screenshot,
+            ocr_result,
+        })
+    }
+}
+
+/// Find a region that matches the given window title
+///
+/// Uses case-insensitive substring matching to find a region.
+fn find_region_for_window<'a>(
+    title: &str,
+    regions: &'a HashMap<String, CaptureRegion>,
+) -> Option<&'a CaptureRegion> {
+    let title_lower = title.to_lowercase();
+
+    // Try exact match first
+    if let Some(region) = regions.get(title) {
+        return Some(region);
+    }
+
+    // Try substring match
+    for (pattern, region) in regions {
+        if title_lower.contains(&pattern.to_lowercase()) {
+            return Some(region);
+        }
+    }
+
+    None
 }

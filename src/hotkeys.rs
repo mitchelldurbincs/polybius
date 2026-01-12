@@ -5,12 +5,25 @@ use global_hotkey::GlobalHotKeyManager;
 
 use crate::audio::BufferDuration;
 
+/// Action triggered by a hotkey press
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyAction {
+    /// Save audio buffer with the given duration
+    SaveBuffer(BufferDuration),
+    /// Take screenshot only (save + clipboard)
+    Screenshot,
+    /// Open region selection mode
+    RegionSelect,
+}
+
 /// Hotkey manager for the application
 pub struct HotkeyManager {
     _manager: GlobalHotKeyManager,
     pub hotkey_10s: Option<(HotKey, u32)>,
     pub hotkey_30s: Option<(HotKey, u32)>,
     pub hotkey_60s: Option<(HotKey, u32)>,
+    pub hotkey_screenshot: Option<(HotKey, u32)>,
+    pub hotkey_region: Option<(HotKey, u32)>,
 }
 
 impl HotkeyManager {
@@ -19,6 +32,8 @@ impl HotkeyManager {
         hotkey_10s_str: &str,
         hotkey_30s_str: &str,
         hotkey_60s_str: &str,
+        hotkey_screenshot_str: &str,
+        hotkey_region_str: &str,
         enabled_10s: bool,
         enabled_30s: bool,
         enabled_60s: bool,
@@ -82,15 +97,49 @@ impl HotkeyManager {
             None
         };
 
+        // Screenshot hotkey is always enabled
+        let hotkey_screenshot = match parse_hotkey(hotkey_screenshot_str) {
+            Ok(hk) => {
+                manager.register(hk)?;
+                println!("[OK] Registered hotkey: {} (screenshot)", hotkey_screenshot_str);
+                Some((hk, hk.id()))
+            }
+            Err(e) => {
+                eprintln!(
+                    "[WARN] Failed to parse screenshot hotkey '{}': {}",
+                    hotkey_screenshot_str, e
+                );
+                None
+            }
+        };
+
+        // Region select hotkey is always enabled
+        let hotkey_region = match parse_hotkey(hotkey_region_str) {
+            Ok(hk) => {
+                manager.register(hk)?;
+                println!("[OK] Registered hotkey: {} (region select)", hotkey_region_str);
+                Some((hk, hk.id()))
+            }
+            Err(e) => {
+                eprintln!(
+                    "[WARN] Failed to parse region select hotkey '{}': {}",
+                    hotkey_region_str, e
+                );
+                None
+            }
+        };
+
         Ok(Self {
             _manager: manager,
             hotkey_10s,
             hotkey_30s,
             hotkey_60s,
+            hotkey_screenshot,
+            hotkey_region,
         })
     }
 
-    /// Get the buffer duration for a given hotkey ID
+    /// Get the buffer duration for a given hotkey ID (legacy method)
     pub fn duration_for_id(&self, id: u32) -> Option<BufferDuration> {
         if let Some((_, hk_id)) = self.hotkey_10s {
             if hk_id == id {
@@ -105,6 +154,36 @@ impl HotkeyManager {
         if let Some((_, hk_id)) = self.hotkey_60s {
             if hk_id == id {
                 return Some(BufferDuration::Seconds60);
+            }
+        }
+        None
+    }
+
+    /// Get the action for a given hotkey ID
+    pub fn action_for_id(&self, id: u32) -> Option<HotkeyAction> {
+        if let Some((_, hk_id)) = self.hotkey_10s {
+            if hk_id == id {
+                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds10));
+            }
+        }
+        if let Some((_, hk_id)) = self.hotkey_30s {
+            if hk_id == id {
+                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds30));
+            }
+        }
+        if let Some((_, hk_id)) = self.hotkey_60s {
+            if hk_id == id {
+                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds60));
+            }
+        }
+        if let Some((_, hk_id)) = self.hotkey_screenshot {
+            if hk_id == id {
+                return Some(HotkeyAction::Screenshot);
+            }
+        }
+        if let Some((_, hk_id)) = self.hotkey_region {
+            if hk_id == id {
+                return Some(HotkeyAction::RegionSelect);
             }
         }
         None
