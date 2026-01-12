@@ -1,154 +1,208 @@
-//! The Miner v0.2.1 - Stage 2: Ring Buffer Recording
+//! The Miner v0.3.0 - Stage 3: System Tray & Multi-Duration
 //!
-//! Records system audio continuously via WASAPI loopback, keeping only the
-//! last 10 seconds in a ring buffer. Press Ctrl+Alt+C to save the buffer.
+//! Records system audio continuously via WASAPI loopback, with multiple
+//! buffer durations (10s/30s/60s). Runs as a system tray application.
 //!
-//! Architecture notes:
-//! - Producer has exclusive ownership by the audio thread (no mutex/priority inversion)
-//! - Buffer is peeked, not drained, preserving full context for rapid successive saves
+//! Hotkeys:
+//! - Ctrl+Alt+1: Save last 10 seconds
+//! - Ctrl+Alt+2: Save last 30 seconds
+//! - Ctrl+Alt+3: Save last 60 seconds
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+mod audio;
+mod config;
+mod hotkeys;
+mod notifications;
+mod tray;
+mod wav;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{FromSample, Sample, SampleFormat};
-use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
-use hound::{WavSpec, WavWriter};
-use ringbuf::{
-    traits::{Consumer, Producer, Split},
-    HeapRb,
-};
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// Duration of audio to keep in the ring buffer (in seconds)
-const BUFFER_DURATION_SECS: usize = 10;
+use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
+use tray_icon::menu::MenuEvent;
+
+use audio::{AudioCapture, BufferDuration};
+use config::Config;
+use hotkeys::HotkeyManager;
+use tray::TrayManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("The Miner v0.2.1 - Stage 2 (Ring Buffer)");
+    println!("The Miner v0.3.0 - Stage 3 (System Tray)");
     println!("========================================\n");
 
-    // 1. Setup global hotkey (Ctrl+Alt+C)
-    let manager = GlobalHotKeyManager::new()?;
-    let hotkey = HotKey::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyC);
-    manager.register(hotkey)?;
-    println!("[OK] Registered hotkey: Ctrl+Alt+C");
+    // Hide console window on Windows (release builds)
+    #[cfg(all(windows, not(debug_assertions)))]
+    hide_console_window();
 
-    // 2. Get WASAPI host (Windows-specific)
-    #[cfg(target_os = "windows")]
-    let host = cpal::host_from_id(cpal::HostId::Wasapi)?;
+    // 1. Load configuration
+    let config = Config::load();
 
-    #[cfg(not(target_os = "windows"))]
-    let host = cpal::default_host();
+    // Ensure save directory exists
+    let save_dir = config.ensure_save_dir()?;
+    println!("[OK] Save directory: {}", save_dir.display());
 
-    // 3. Get default output device (we'll capture from it via loopback)
-    let device = host
-        .default_output_device()
-        .ok_or("No output device found")?;
+    // 2. Determine which buffers to enable
+    let mut enabled_buffers = Vec::new();
+    if config.audio.buffer_10s {
+        enabled_buffers.push(BufferDuration::Seconds10);
+    }
+    if config.audio.buffer_30s {
+        enabled_buffers.push(BufferDuration::Seconds30);
+    }
+    if config.audio.buffer_60s {
+        enabled_buffers.push(BufferDuration::Seconds60);
+    }
 
-    println!("[OK] Using device: {}", device.name().unwrap_or_default());
+    if enabled_buffers.is_empty() {
+        return Err("No buffers enabled in configuration".into());
+    }
 
-    // 4. Get supported config
-    let config = device.default_output_config()?;
-    let sample_format = config.sample_format();
-    let sample_rate = config.sample_rate().0;
-    let channels = config.channels();
+    // 3. Initialize audio capture
+    let mut audio = AudioCapture::new(&enabled_buffers)?;
 
-    println!(
-        "[OK] Config: {} Hz, {} channels, {:?}",
-        sample_rate, channels, sample_format
-    );
+    // 4. Register hotkeys
+    let hotkeys = HotkeyManager::new(
+        &config.hotkeys.save_10s,
+        &config.hotkeys.save_30s,
+        &config.hotkeys.save_60s,
+        config.audio.buffer_10s,
+        config.audio.buffer_30s,
+        config.audio.buffer_60s,
+    )?;
 
-    // 5. Calculate ring buffer size for BUFFER_DURATION_SECS seconds of audio
-    let buffer_size = sample_rate as usize * channels as usize * BUFFER_DURATION_SECS;
-    let memory_mb = (buffer_size * std::mem::size_of::<f32>()) as f32 / (1024.0 * 1024.0);
-    println!(
-        "[OK] Ring buffer: {} samples ({:.2} MB, {} seconds)",
-        buffer_size, memory_mb, BUFFER_DURATION_SECS
-    );
+    // 5. Create system tray
+    let tray = TrayManager::new(
+        config.audio.buffer_10s,
+        config.audio.buffer_30s,
+        config.audio.buffer_60s,
+    )?;
 
-    // 6. Create lock-free ring buffer
-    let ring = HeapRb::<f32>::new(buffer_size);
-    let (producer, consumer) = ring.split();
+    println!("\n[RECORDING] Capturing audio to ring buffers...");
+    println!("[RECORDING] Use hotkeys or tray menu to save\n");
 
-    // 7. Flag to signal when to stop
-    let running = Arc::new(AtomicBool::new(true));
-    let running_clone = running.clone();
+    // 6. Main event loop
+    let show_notifications = config.general.notifications;
 
-    // 8. Build input stream based on sample format
-    // Producer is moved directly into the audio callback - no mutex needed!
-    // This eliminates priority inversion risk since the audio thread has exclusive ownership.
-    let stream = match sample_format {
-        SampleFormat::F32 => {
-            build_input_stream::<f32>(&device, &config.into(), producer, running_clone)?
-        }
-        SampleFormat::I16 => {
-            build_input_stream::<i16>(&device, &config.into(), producer, running_clone)?
-        }
-        SampleFormat::U16 => {
-            build_input_stream::<u16>(&device, &config.into(), producer, running_clone)?
-        }
-        format => return Err(format!("Unsupported sample format: {:?}", format).into()),
-    };
-
-    // 9. Start recording
-    stream.play()?;
-    println!(
-        "\n[RECORDING] Continuously capturing last {} seconds...",
-        BUFFER_DURATION_SECS
-    );
-    println!("[RECORDING] Press Ctrl+Alt+C to save buffer to WAV\n");
-
-    // Store consumer for access in event loop
-    // Note: Consumer stays on main thread only - no mutex needed for single-threaded access
-    let mut consumer = consumer;
-
-    // 10. Event loop - wait for hotkey
     loop {
-        if let Ok(event) = GlobalHotKeyEvent::receiver().recv() {
-            if event.id == hotkey.id() && event.state == HotKeyState::Pressed {
-                println!("\n[SAVE] Hotkey pressed, saving buffer...");
-
-                // PEEK at samples without consuming - this preserves the buffer!
-                // The buffer acts as a sliding window, not a queue to be drained.
-                // This allows rapid successive saves to each capture the full context.
-                let samples: Vec<f32> = {
-                    let (head, tail) = consumer.as_slices();
-                    // Ring buffer data may be split across two contiguous regions
-                    let mut samples = Vec::with_capacity(head.len() + tail.len());
-                    samples.extend_from_slice(head);
-                    samples.extend_from_slice(tail);
-                    samples
-                };
-
-                let duration_secs = samples.len() as f32 / (sample_rate as f32 * channels as f32);
-
-                println!(
-                    "[INFO] Captured {} samples ({:.2} seconds)",
-                    samples.len(),
-                    duration_secs
-                );
-
-                if samples.is_empty() {
-                    println!("[WARN] No audio in buffer! Check your audio output device.");
-                } else {
-                    // Generate timestamped filename
-                    let filename = generate_filename();
-                    write_wav(&filename, &samples, sample_rate, channels)?;
-                    println!("[OK] Saved to {}", filename);
+        // Check for hotkey events (non-blocking)
+        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            if event.state == HotKeyState::Pressed {
+                if let Some(duration) = hotkeys.duration_for_id(event.id) {
+                    handle_save(&mut audio, duration, &save_dir, show_notifications)?;
                 }
-
-                println!("\n[RECORDING] Continuing to record... Press Ctrl+Alt+C again to save\n");
             }
         }
+
+        // Check for menu events (non-blocking)
+        if let Ok(event) = MenuEvent::receiver().try_recv() {
+            match event.id.0.as_str() {
+                tray::MENU_SAVE_10S => {
+                    handle_save(&mut audio, BufferDuration::Seconds10, &save_dir, show_notifications)?;
+                }
+                tray::MENU_SAVE_30S => {
+                    handle_save(&mut audio, BufferDuration::Seconds30, &save_dir, show_notifications)?;
+                }
+                tray::MENU_SAVE_60S => {
+                    handle_save(&mut audio, BufferDuration::Seconds60, &save_dir, show_notifications)?;
+                }
+                tray::MENU_PAUSE => {
+                    if audio.is_recording() {
+                        audio.pause();
+                        tray.set_paused(true);
+                        println!("[PAUSED] Recording paused");
+                    } else {
+                        audio.resume();
+                        tray.set_paused(false);
+                        println!("[RECORDING] Recording resumed");
+                    }
+                }
+                tray::MENU_OPEN_FOLDER => {
+                    open_folder(&save_dir);
+                }
+                tray::MENU_SETTINGS => {
+                    open_config_file();
+                }
+                tray::MENU_QUIT => {
+                    println!("[EXIT] Quitting...");
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        // Small sleep to prevent busy-waiting (~100 checks per second)
+        std::thread::sleep(Duration::from_millis(10));
     }
+
+    Ok(())
 }
 
-/// Generate a timestamped filename for the WAV file
-fn generate_filename() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
+/// Handle saving audio to a file
+fn handle_save(
+    audio: &mut AudioCapture,
+    duration: BufferDuration,
+    save_dir: &PathBuf,
+    show_notification: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("\n[SAVE] Saving {} second buffer...", duration.as_secs());
 
+    // Check if this buffer is available
+    if !audio.has_buffer(duration) {
+        println!("[WARN] {} second buffer is not enabled", duration.as_secs());
+        if show_notification {
+            notifications::notify_error(&format!(
+                "{} second buffer is not enabled",
+                duration.as_secs()
+            ));
+        }
+        return Ok(());
+    }
+
+    // Get samples from buffer
+    let samples = match audio.peek_buffer(duration) {
+        Some(s) => s,
+        None => {
+            println!("[WARN] Could not read buffer");
+            return Ok(());
+        }
+    };
+
+    if samples.is_empty() {
+        println!("[WARN] No audio in buffer!");
+        if show_notification {
+            notifications::notify_error("No audio in buffer");
+        }
+        return Ok(());
+    }
+
+    let duration_secs =
+        samples.len() as f32 / (audio.format.sample_rate as f32 * audio.format.channels as f32);
+
+    println!(
+        "[INFO] Captured {} samples ({:.2} seconds)",
+        samples.len(),
+        duration_secs
+    );
+
+    // Generate filename and save
+    let filename = generate_filename();
+    let path = save_dir.join(&filename);
+
+    wav::write_wav(&path, &samples, audio.format.sample_rate, audio.format.channels)?;
+
+    println!("[OK] Saved to {}", path.display());
+
+    if show_notification {
+        notifications::notify_save_complete(&path, duration_secs);
+    }
+
+    println!("\n[RECORDING] Continuing to record...\n");
+
+    Ok(())
+}
+
+/// Generate a timestamped filename
+fn generate_filename() -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -157,65 +211,53 @@ fn generate_filename() -> String {
     format!("audio_{}.wav", timestamp)
 }
 
-/// Build an input stream that captures audio and stores samples in the ring buffer
-///
-/// The producer is moved into the audio callback, giving the audio thread
-/// exclusive ownership. This eliminates priority inversion - no mutex contention.
-fn build_input_stream<T>(
-    device: &cpal::Device,
-    config: &cpal::StreamConfig,
-    producer: ringbuf::HeapProd<f32>,
-    running: Arc<AtomicBool>,
-) -> Result<cpal::Stream, cpal::BuildStreamError>
-where
-    T: Sample + cpal::SizedSample,
-    f32: FromSample<T>,
-{
-    // Producer is moved into closure - audio thread has exclusive ownership
-    let mut producer = producer;
-
-    device.build_input_stream(
-        config,
-        move |data: &[T], _: &cpal::InputCallbackInfo| {
-            if !running.load(Ordering::Relaxed) {
-                return;
-            }
-
-            for &sample in data {
-                let sample_f32 = f32::from_sample(sample);
-                // Push with overwrite - if buffer is full, oldest sample is discarded
-                producer.push_overwrite(sample_f32);
-            }
-        },
-        |err| eprintln!("[ERROR] Audio stream error: {}", err),
-        None, // No timeout
-    )
-}
-
-/// Write samples to a WAV file
-fn write_wav(
-    path: &str,
-    samples: &[f32],
-    sample_rate: u32,
-    channels: u16,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let spec = WavSpec {
-        channels,
-        sample_rate,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-    let mut writer = WavWriter::create(path, spec)?;
-
-    // Convert f32 samples to i16
-    for &sample in samples {
-        // Clamp to prevent overflow
-        let clamped = sample.clamp(-1.0, 1.0);
-        let amplitude = (clamped * i16::MAX as f32) as i16;
-        writer.write_sample(amplitude)?;
+/// Open the save folder in the file manager
+fn open_folder(path: &PathBuf) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer").arg(path).spawn();
     }
 
-    writer.finalize()?;
-    Ok(())
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(path).spawn();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+    }
+}
+
+/// Open the config file in the default editor
+fn open_config_file() {
+    if let Some(config_path) = Config::config_path() {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("notepad").arg(&config_path).spawn();
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(&config_path).spawn();
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(&config_path).spawn();
+        }
+    }
+}
+
+/// Hide the console window on Windows
+#[cfg(all(windows, not(debug_assertions)))]
+fn hide_console_window() {
+    use windows::Win32::System::Console::{FreeConsole, GetConsoleWindow};
+
+    unsafe {
+        let window = GetConsoleWindow();
+        if window.0 != 0 {
+            let _ = FreeConsole();
+        }
+    }
 }
