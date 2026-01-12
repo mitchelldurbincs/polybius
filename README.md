@@ -49,7 +49,7 @@ A high-performance Rust binary running on Windows.
 * **Audio:** Uses `cpal` to tap into WASAPI Loopback. Maintains lock-free ring buffers (`ringbuf`) for 10s, 30s, and 60s durations.
 * **System Tray:** Lives in your system tray with context menu for capture, pause/resume, and settings.
 * **Configuration:** TOML-based config file at platform-standard location (e.g., `%APPDATA%\miner\config.toml` on Windows).
-* **Vision (Planned):** Will use Windows Native OCR to extract text from screenshots.
+* **Vision:** Uses Windows Native OCR to extract text from screenshots alongside audio capture.
 * **Performance:** Zero allocations in the hot audio loop.
 
 ### 2. The Brain (Planned)
@@ -116,9 +116,10 @@ You can customize hotkeys, save directory, buffer durations, and notification se
 * [x] **System Tray:** Full tray integration with context menu.
 * [x] **Multi-Duration Buffers:** Configurable 10s, 30s, and 60s buffers.
 * [x] **Configuration:** TOML-based config with platform-standard paths.
-* [ ] **Vision Module:** Screenshot & OCR integration.
-* [ ] **Data Structure:** JSON metadata format for captured cards.
+* [x] **Vision Module:** Screenshot & OCR integration.
+* [x] **Data Structure:** JSON metadata format for captured cards.
 * [ ] **The Brain:** Go backend for FSRS scheduling.
+* [ ] **The Gym:** TUI review interface.
 
 ## ⚖️ License
 
