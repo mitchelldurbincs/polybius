@@ -14,6 +14,8 @@ pub struct Config {
     pub hotkeys: HotkeyConfig,
     #[serde(default)]
     pub audio: AudioConfig,
+    #[serde(default)]
+    pub vision: VisionConfig,
 }
 
 /// General application settings
@@ -55,6 +57,32 @@ pub struct AudioConfig {
     pub buffer_60s: bool,
 }
 
+/// Vision (screenshot + OCR) settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisionConfig {
+    /// Master toggle for all vision features
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Enable screenshot capture
+    #[serde(default = "default_true")]
+    pub screenshot_enabled: bool,
+    /// Capture mode: "screen" (full screen) or "window" (active window)
+    #[serde(default = "default_capture_mode")]
+    pub capture_mode: String,
+    /// Target window title pattern (only used if capture_mode = "window")
+    #[serde(default)]
+    pub window_pattern: Option<String>,
+    /// Enable OCR text extraction
+    #[serde(default = "default_true")]
+    pub ocr_enabled: bool,
+    /// OCR language (BCP-47 tag). Use "auto" for auto-detection.
+    #[serde(default = "default_ocr_language")]
+    pub ocr_language: String,
+    /// Enable JSON metadata output
+    #[serde(default = "default_true")]
+    pub metadata_enabled: bool,
+}
+
 // Default value functions for serde
 fn default_save_directory() -> String {
     if let Some(dirs) = directories::UserDirs::new() {
@@ -81,12 +109,21 @@ fn default_hotkey_60s() -> String {
     "CTRL+ALT+3".to_string()
 }
 
+fn default_capture_mode() -> String {
+    "screen".to_string()
+}
+
+fn default_ocr_language() -> String {
+    "en-US".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             general: GeneralConfig::default(),
             hotkeys: HotkeyConfig::default(),
             audio: AudioConfig::default(),
+            vision: VisionConfig::default(),
         }
     }
 }
@@ -116,6 +153,20 @@ impl Default for AudioConfig {
             buffer_10s: true,
             buffer_30s: true,
             buffer_60s: false, // Disabled by default to save memory
+        }
+    }
+}
+
+impl Default for VisionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            screenshot_enabled: true,
+            capture_mode: default_capture_mode(),
+            window_pattern: None,
+            ocr_enabled: true,
+            ocr_language: default_ocr_language(),
+            metadata_enabled: true,
         }
     }
 }

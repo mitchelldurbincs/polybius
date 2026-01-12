@@ -33,7 +33,10 @@ impl HotkeyManager {
                     Some((hk, hk.id()))
                 }
                 Err(e) => {
-                    eprintln!("[WARN] Failed to parse 10s hotkey '{}': {}", hotkey_10s_str, e);
+                    eprintln!(
+                        "[WARN] Failed to parse 10s hotkey '{}': {}",
+                        hotkey_10s_str, e
+                    );
                     None
                 }
             }
@@ -49,7 +52,10 @@ impl HotkeyManager {
                     Some((hk, hk.id()))
                 }
                 Err(e) => {
-                    eprintln!("[WARN] Failed to parse 30s hotkey '{}': {}", hotkey_30s_str, e);
+                    eprintln!(
+                        "[WARN] Failed to parse 30s hotkey '{}': {}",
+                        hotkey_30s_str, e
+                    );
                     None
                 }
             }
@@ -65,7 +71,10 @@ impl HotkeyManager {
                     Some((hk, hk.id()))
                 }
                 Err(e) => {
-                    eprintln!("[WARN] Failed to parse 60s hotkey '{}': {}", hotkey_60s_str, e);
+                    eprintln!(
+                        "[WARN] Failed to parse 60s hotkey '{}': {}",
+                        hotkey_60s_str, e
+                    );
                     None
                 }
             }
