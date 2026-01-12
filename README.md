@@ -25,22 +25,21 @@ Polybius is designed as a distributed system to support a "Capture Locally, Revi
 
 ```mermaid
 graph TD
-    A[The Miner] -->|Captures| B(Artifact)
-    B -->|Audio + Screenshot + OCR| C[The Brain]
-    C -->|FSRS Scheduling| D[The Gym]
-    
+    A["The Miner (Rust)"] -->|Captures| B(Artifact)
+    B -->|Audio + Screenshot + OCR| C["The Brain (Go)"]
+    C -->|FSRS Scheduling| D["The Gym (TUI)"]
+
     subgraph Client [Desktop / Laptop]
-    A[The Miner (Rust)]
-    end
-    
-    subgraph Server [Home Lab / Cloud]
-    C[The Brain (Go)]
-    end
-    
-    subgraph Review [Terminal]
-    D[The Gym (TUI)]
+    A
     end
 
+    subgraph Server [Home Lab / Cloud]
+    C
+    end
+
+    subgraph Review [Terminal]
+    D
+    end
 ```
 
 ### 1. The Miner (Current MVP)
