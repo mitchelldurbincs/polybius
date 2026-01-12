@@ -14,8 +14,8 @@ Polybius is a local daemon that sits in your system tray while you watch Netflix
 
 1. **The Watch:** You listen to native content.
 2. **The Trigger:** You hear a sentence you want to learn.
-3. **The Capture:** You hit a preconfigured keybind like `Ctrl+Alt+1`
-4. **The Artifact:** Polybius instantly saves the **last 10 seconds of audio** (buffered in RAM) and a **screenshot** of the scene (with subtitles) to your library.
+3. **The Capture:** You hit a hotkey: `Ctrl+Alt+1` (10s), `Ctrl+Alt+2` (30s), or `Ctrl+Alt+3` (60s).
+4. **The Artifact:** Polybius instantly saves the audio (buffered in RAM) and a **screenshot** of the scene (with subtitles) to your library.
 
 No manual recording. No downloading video files. Zero friction.
 
@@ -47,8 +47,10 @@ graph TD
 
 A high-performance Rust binary running on Windows.
 
-* **Audio:** Uses `cpal` to tap into WASAPI Loopback. Maintains a lock-free ring buffer (`ringbuf`) of the last 10 seconds of system audio.
-* **Vision (WIP):** Uses Windows Native OCR to extract text from the screenshot.
+* **Audio:** Uses `cpal` to tap into WASAPI Loopback. Maintains lock-free ring buffers (`ringbuf`) for 10s, 30s, and 60s durations.
+* **System Tray:** Lives in your system tray with context menu for capture, pause/resume, and settings.
+* **Configuration:** TOML-based config file at platform-standard location (e.g., `%APPDATA%\miner\config.toml` on Windows).
+* **Vision (Planned):** Will use Windows Native OCR to extract text from screenshots.
 * **Performance:** Zero allocations in the hot audio loop.
 
 ### 2. The Brain (Planned)
@@ -83,22 +85,38 @@ cargo run --release
 
 ### Usage
 
-1. Run the app. It will minimize to the background.
-2. Start watching Chinese content (YouTube, Netflix, etc.).
-3. When you hear a sentence you want to mine, press **`Ctrl + Alt + C`**.
-4. Check the `/mined_data` folder for your captured audio `.wav` files.
+1. Run the app. It will appear in your system tray.
+2. Start watching content in your target language (YouTube, Netflix, etc.).
+3. When you hear a sentence you want to mine, press:
+   - **`Ctrl + Alt + 1`** — Save last 10 seconds
+   - **`Ctrl + Alt + 2`** — Save last 30 seconds
+   - **`Ctrl + Alt + 3`** — Save last 60 seconds
+4. Check `~/Music/Miner` (or your configured save directory) for captured `.wav` files.
+
+### Configuration
+
+The config file is created automatically on first run at:
+- **Windows:** `%APPDATA%\miner\config.toml`
+- **macOS:** `~/Library/Application Support/miner/config.toml`
+- **Linux:** `~/.config/miner/config.toml`
+
+You can customize hotkeys, save directory, buffer durations, and notification settings.
 
 ## 🛠️ Tech Stack
 
 * **Core:** Rust
 * **Audio:** `cpal`, `hound`, `ringbuf`
-* **System Integration:** `global-hotkey`, `windows-rs`
-* **Vision:** `xcap`, `image`
+* **System Integration:** `global-hotkey`, `windows-rs`, `tray-icon`, `winit`
+* **Configuration:** `serde`, `toml`, `directories`
+* **Notifications:** `notify-rust`
 
 ## 🗺️ Roadmap
 
 * [x] **Core Audio Engine:** Ring buffer recording without priority inversion.
-* [x] **Hotkeys:** Global capture trigger.
+* [x] **Hotkeys:** Global capture triggers (10s/30s/60s).
+* [x] **System Tray:** Full tray integration with context menu.
+* [x] **Multi-Duration Buffers:** Configurable 10s, 30s, and 60s buffers.
+* [x] **Configuration:** TOML-based config with platform-standard paths.
 * [ ] **Vision Module:** Screenshot & OCR integration.
 * [ ] **Data Structure:** JSON metadata format for captured cards.
 * [ ] **The Brain:** Go backend for FSRS scheduling.
