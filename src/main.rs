@@ -101,11 +101,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let show_notifications = config.general.notifications;
 
     loop {
+        // Pump Windows messages (required for global hotkeys to work)
+        #[cfg(windows)]
+        {
+            use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE};
+            unsafe {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+        }
+
         // Check for hotkey events (non-blocking)
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            println!("[DEBUG] Hotkey event received: id={}, state={:?}", event.id, event.state);
             if event.state == HotKeyState::Pressed {
                 if let Some(duration) = hotkeys.duration_for_id(event.id) {
                     handle_save(&mut audio, &vision, duration, &save_dir, show_notifications)?;
+                } else {
+                    println!("[DEBUG] Unknown hotkey id: {}", event.id);
                 }
             }
         }
@@ -341,7 +357,7 @@ fn hide_console_window() {
 
     unsafe {
         let window = GetConsoleWindow();
-        if window.0 != 0 {
+        if !window.0.is_null() {
             let _ = FreeConsole();
         }
     }

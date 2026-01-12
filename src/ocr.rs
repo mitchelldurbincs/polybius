@@ -122,11 +122,9 @@ impl OcrProcessor {
 
         let engine = if language_tag == "auto" {
             // Try to get user's preferred language
-            OcrEngine::TryCreateFromUserProfileLanguages()
-                .map_err(|e| {
-                    OcrError::InitError(format!("Failed to create auto-detect engine: {}", e))
-                })?
-                .ok_or_else(|| OcrError::InitError("No OCR languages available".to_string()))?
+            OcrEngine::TryCreateFromUserProfileLanguages().map_err(|e| {
+                OcrError::InitError(format!("Failed to create auto-detect engine: {}", e))
+            })?
         } else {
             let language = Language::CreateLanguage(&language_tag.into()).map_err(|e| {
                 OcrError::InitError(format!("Invalid language tag '{}': {}", language_tag, e))
@@ -140,7 +138,6 @@ impl OcrProcessor {
 
             OcrEngine::TryCreateFromLanguage(&language)
                 .map_err(|e| OcrError::InitError(format!("Failed to create OCR engine: {}", e)))?
-                .ok_or_else(|| OcrError::LanguageNotAvailable(language_tag.to_string()))?
         };
 
         Ok(Self {
@@ -151,7 +148,8 @@ impl OcrProcessor {
 
     fn process_windows(&self, screenshot: &Screenshot) -> Result<OcrResult, OcrError> {
         use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
-        use windows::Storage::Streams::{Buffer, IBuffer};
+        use windows::core::Interface;
+        use windows::Storage::Streams::Buffer;
 
         // Create a SoftwareBitmap from the screenshot data
         // Windows OCR expects BGRA8 format
@@ -167,13 +165,13 @@ impl OcrProcessor {
         )
         .map_err(|e| OcrError::ProcessError(format!("Failed to create bitmap: {}", e)))?;
 
-        // Copy pixel data to the bitmap
+        // Copy pixel data to the bitmap using Buffer with direct memory access
         let buffer = Buffer::Create(bgra_data.len() as u32)
             .map_err(|e| OcrError::ProcessError(format!("Failed to create buffer: {}", e)))?;
 
-        // Write data to buffer
+        // Write data to buffer using IBufferByteAccess from windows_core
         {
-            use windows::Storage::Streams::IBufferByteAccess;
+            use windows::Win32::System::WinRT::IBufferByteAccess;
             let byte_access: IBufferByteAccess = buffer
                 .cast()
                 .map_err(|e| OcrError::ProcessError(format!("Failed to get byte access: {}", e)))?;
@@ -214,12 +212,20 @@ impl OcrProcessor {
             .Lines()
             .map_err(|e| OcrError::ProcessError(format!("Failed to get lines: {}", e)))?;
 
-        for line in lines {
+        for i in 0..lines.Size().unwrap_or(0) {
+            let line = lines
+                .GetAt(i)
+                .map_err(|e| OcrError::ProcessError(format!("Failed to get line: {}", e)))?;
+
             let line_words = line
                 .Words()
                 .map_err(|e| OcrError::ProcessError(format!("Failed to get words: {}", e)))?;
 
-            for word in line_words {
+            for j in 0..line_words.Size().unwrap_or(0) {
+                let word = line_words
+                    .GetAt(j)
+                    .map_err(|e| OcrError::ProcessError(format!("Failed to get word: {}", e)))?;
+
                 let word_text = word
                     .Text()
                     .map_err(|e| OcrError::ProcessError(format!("Failed to get word text: {}", e)))?

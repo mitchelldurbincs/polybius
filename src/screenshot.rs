@@ -128,7 +128,7 @@ fn capture_window_windows(title_pattern: &str) -> Result<Screenshot, ScreenshotE
             ScreenshotError::CaptureError(format!("Window '{}' not found", title_pattern))
         })?;
 
-    let buf = capture_window(target_hwnd.hwnd, Area::Full)
+    let buf = capture_window(target_hwnd.hwnd)
         .map_err(|e| ScreenshotError::CaptureError(format!("{:?}", e)))?;
 
     // win-screenshot returns BGRA, convert to RGBA
