@@ -1,7 +1,8 @@
-//! The Miner v0.3.0 - Stage 3: System Tray & Multi-Duration
+//! The Miner v0.4.0 - Stage 4: Vision Module
 //!
 //! Records system audio continuously via WASAPI loopback, with multiple
 //! buffer durations (10s/30s/60s). Runs as a system tray application.
+//! Now includes screenshot capture and OCR for extracting text.
 //!
 //! Hotkeys:
 //! - Ctrl+Alt+1: Save last 10 seconds
@@ -11,8 +12,12 @@
 mod audio;
 mod config;
 mod hotkeys;
+mod metadata;
 mod notifications;
+mod ocr;
+mod screenshot;
 mod tray;
+mod vision;
 mod wav;
 
 use std::path::PathBuf;
@@ -25,10 +30,11 @@ use audio::{AudioCapture, BufferDuration};
 use config::Config;
 use hotkeys::HotkeyManager;
 use tray::TrayManager;
+use vision::VisionCapture;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("The Miner v0.3.0 - Stage 3 (System Tray)");
-    println!("========================================\n");
+    println!("The Miner v0.4.0 - Stage 4 (Vision Module)");
+    println!("==========================================\n");
 
     // Hide console window on Windows (release builds)
     #[cfg(all(windows, not(debug_assertions)))]
@@ -41,7 +47,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save_dir = config.ensure_save_dir()?;
     println!("[OK] Save directory: {}", save_dir.display());
 
-    // 2. Determine which buffers to enable
+    // 2. Initialize vision capture (screenshot + OCR)
+    let vision = VisionCapture::new(&config.vision);
+    if vision.is_enabled() {
+        println!("[OK] Vision capture enabled");
+        if vision.is_ocr_enabled() {
+            println!("[OK] OCR enabled");
+        }
+    } else {
+        println!("[INFO] Vision capture disabled");
+    }
+
+    // 3. Determine which buffers to enable
     let mut enabled_buffers = Vec::new();
     if config.audio.buffer_10s {
         enabled_buffers.push(BufferDuration::Seconds10);
@@ -57,10 +74,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("No buffers enabled in configuration".into());
     }
 
-    // 3. Initialize audio capture
+    // 4. Initialize audio capture
     let mut audio = AudioCapture::new(&enabled_buffers)?;
 
-    // 4. Register hotkeys
+    // 5. Register hotkeys
     let hotkeys = HotkeyManager::new(
         &config.hotkeys.save_10s,
         &config.hotkeys.save_30s,
@@ -70,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.audio.buffer_60s,
     )?;
 
-    // 5. Create system tray
+    // 6. Create system tray
     let tray = TrayManager::new(
         config.audio.buffer_10s,
         config.audio.buffer_30s,
@@ -80,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n[RECORDING] Capturing audio to ring buffers...");
     println!("[RECORDING] Use hotkeys or tray menu to save\n");
 
-    // 6. Main event loop
+    // 7. Main event loop
     let show_notifications = config.general.notifications;
 
     loop {
@@ -88,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
             if event.state == HotKeyState::Pressed {
                 if let Some(duration) = hotkeys.duration_for_id(event.id) {
-                    handle_save(&mut audio, duration, &save_dir, show_notifications)?;
+                    handle_save(&mut audio, &vision, duration, &save_dir, show_notifications)?;
                 }
             }
         }
@@ -97,13 +114,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(event) = MenuEvent::receiver().try_recv() {
             match event.id.0.as_str() {
                 tray::MENU_SAVE_10S => {
-                    handle_save(&mut audio, BufferDuration::Seconds10, &save_dir, show_notifications)?;
+                    handle_save(
+                        &mut audio,
+                        &vision,
+                        BufferDuration::Seconds10,
+                        &save_dir,
+                        show_notifications,
+                    )?;
                 }
                 tray::MENU_SAVE_30S => {
-                    handle_save(&mut audio, BufferDuration::Seconds30, &save_dir, show_notifications)?;
+                    handle_save(
+                        &mut audio,
+                        &vision,
+                        BufferDuration::Seconds30,
+                        &save_dir,
+                        show_notifications,
+                    )?;
                 }
                 tray::MENU_SAVE_60S => {
-                    handle_save(&mut audio, BufferDuration::Seconds60, &save_dir, show_notifications)?;
+                    handle_save(
+                        &mut audio,
+                        &vision,
+                        BufferDuration::Seconds60,
+                        &save_dir,
+                        show_notifications,
+                    )?;
                 }
                 tray::MENU_PAUSE => {
                     if audio.is_recording() {
@@ -137,9 +172,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Handle saving audio to a file
+/// Handle saving audio and vision capture to files
 fn handle_save(
     audio: &mut AudioCapture,
+    vision: &VisionCapture,
     duration: BufferDuration,
     save_dir: &PathBuf,
     show_notification: bool,
@@ -184,16 +220,63 @@ fn handle_save(
         duration_secs
     );
 
-    // Generate filename and save
-    let filename = generate_filename();
-    let path = save_dir.join(&filename);
+    // Generate timestamp for all files
+    let timestamp = generate_timestamp();
+    let base_name = format!("audio_{}", timestamp);
+    let base_path = save_dir.join(&base_name);
 
-    wav::write_wav(&path, &samples, audio.format.sample_rate, audio.format.channels)?;
+    // 1. Save audio
+    let audio_filename = format!("{}.wav", base_name);
+    let audio_path = save_dir.join(&audio_filename);
+    wav::write_wav(
+        &audio_path,
+        &samples,
+        audio.format.sample_rate,
+        audio.format.channels,
+    )?;
+    println!("[OK] Audio saved: {}", audio_path.display());
 
-    println!("[OK] Saved to {}", path.display());
+    // 2. Capture and save vision (screenshot + OCR)
+    let mut screenshot_info = None;
+    let mut capture_result = None;
+
+    if vision.is_enabled() {
+        match vision.capture() {
+            Ok(result) => {
+                // Save screenshot
+                match vision.save_screenshot(&result, &base_path) {
+                    Ok(info) => screenshot_info = info,
+                    Err(e) => eprintln!("[WARN] Failed to save screenshot: {}", e),
+                }
+                capture_result = Some(result);
+            }
+            Err(e) => {
+                eprintln!("[WARN] Vision capture failed: {}", e);
+            }
+        }
+    }
+
+    // 3. Save metadata JSON if enabled
+    if vision.is_metadata_enabled() {
+        let capture_ref = capture_result.as_ref();
+        if let Some(ref result) = capture_ref {
+            let metadata = vision.create_metadata(
+                &audio_filename,
+                duration_secs,
+                audio.format.sample_rate,
+                audio.format.channels,
+                result,
+                screenshot_info,
+            );
+
+            if let Err(e) = vision.save_metadata(&metadata, &base_path) {
+                eprintln!("[WARN] Failed to save metadata: {}", e);
+            }
+        }
+    }
 
     if show_notification {
-        notifications::notify_save_complete(&path, duration_secs);
+        notifications::notify_save_complete(&audio_path, duration_secs);
     }
 
     println!("\n[RECORDING] Continuing to record...\n");
@@ -201,14 +284,12 @@ fn handle_save(
     Ok(())
 }
 
-/// Generate a timestamped filename
-fn generate_filename() -> String {
-    let timestamp = SystemTime::now()
+/// Generate a Unix timestamp for file naming
+fn generate_timestamp() -> u64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs();
-
-    format!("audio_{}.wav", timestamp)
+        .as_secs()
 }
 
 /// Open the save folder in the file manager
@@ -234,7 +315,9 @@ fn open_config_file() {
     if let Some(config_path) = Config::config_path() {
         #[cfg(target_os = "windows")]
         {
-            let _ = std::process::Command::new("notepad").arg(&config_path).spawn();
+            let _ = std::process::Command::new("notepad")
+                .arg(&config_path)
+                .spawn();
         }
 
         #[cfg(target_os = "macos")]
@@ -244,7 +327,9 @@ fn open_config_file() {
 
         #[cfg(target_os = "linux")]
         {
-            let _ = std::process::Command::new("xdg-open").arg(&config_path).spawn();
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&config_path)
+                .spawn();
         }
     }
 }

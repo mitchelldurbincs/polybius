@@ -28,11 +28,27 @@ impl TrayManager {
         enable_60s: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Create menu items
-        let menu_save_10s = MenuItem::with_id(MENU_SAVE_10S, "Save Last 10 seconds\tCtrl+Alt+1", enable_10s, None);
-        let menu_save_30s = MenuItem::with_id(MENU_SAVE_30S, "Save Last 30 seconds\tCtrl+Alt+2", enable_30s, None);
-        let menu_save_60s = MenuItem::with_id(MENU_SAVE_60S, "Save Last 60 seconds\tCtrl+Alt+3", enable_60s, None);
+        let menu_save_10s = MenuItem::with_id(
+            MENU_SAVE_10S,
+            "Save Last 10 seconds\tCtrl+Alt+1",
+            enable_10s,
+            None,
+        );
+        let menu_save_30s = MenuItem::with_id(
+            MENU_SAVE_30S,
+            "Save Last 30 seconds\tCtrl+Alt+2",
+            enable_30s,
+            None,
+        );
+        let menu_save_60s = MenuItem::with_id(
+            MENU_SAVE_60S,
+            "Save Last 60 seconds\tCtrl+Alt+3",
+            enable_60s,
+            None,
+        );
         let menu_pause = MenuItem::with_id(MENU_PAUSE, "⏸ Pause Recording", true, None);
-        let menu_open_folder = MenuItem::with_id(MENU_OPEN_FOLDER, "📁 Open Save Folder", true, None);
+        let menu_open_folder =
+            MenuItem::with_id(MENU_OPEN_FOLDER, "📁 Open Save Folder", true, None);
         let menu_settings = MenuItem::with_id(MENU_SETTINGS, "⚙️ Settings...", true, None);
         let menu_quit = MenuItem::with_id(MENU_QUIT, "🚪 Quit", true, None);
 
@@ -74,7 +90,6 @@ impl TrayManager {
             self.menu_pause.set_text("⏸ Pause Recording");
         }
     }
-
 }
 
 /// Create a simple default icon (red circle for recording)
@@ -96,9 +111,9 @@ fn create_default_icon() -> Result<tray_icon::Icon, Box<dyn std::error::Error>> 
 
             if dist <= radius {
                 // Red circle
-                rgba[idx] = 220;     // R
-                rgba[idx + 1] = 50;  // G
-                rgba[idx + 2] = 50;  // B
+                rgba[idx] = 220; // R
+                rgba[idx + 1] = 50; // G
+                rgba[idx + 2] = 50; // B
                 rgba[idx + 3] = 255; // A
             } else if dist <= radius + 1.0 {
                 // Anti-aliased edge

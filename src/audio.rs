@@ -128,9 +128,15 @@ impl AudioCapture {
         running: Arc<AtomicBool>,
     ) -> Result<Stream, cpal::BuildStreamError> {
         match sample_format {
-            SampleFormat::F32 => Self::build_typed_stream::<f32>(device, config, producers, running),
-            SampleFormat::I16 => Self::build_typed_stream::<i16>(device, config, producers, running),
-            SampleFormat::U16 => Self::build_typed_stream::<u16>(device, config, producers, running),
+            SampleFormat::F32 => {
+                Self::build_typed_stream::<f32>(device, config, producers, running)
+            }
+            SampleFormat::I16 => {
+                Self::build_typed_stream::<i16>(device, config, producers, running)
+            }
+            SampleFormat::U16 => {
+                Self::build_typed_stream::<u16>(device, config, producers, running)
+            }
             _ => Err(cpal::BuildStreamError::StreamConfigNotSupported),
         }
     }
