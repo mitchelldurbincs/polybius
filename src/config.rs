@@ -66,7 +66,7 @@ pub struct VisionConfig {
     /// Enable screenshot capture
     #[serde(default = "default_true")]
     pub screenshot_enabled: bool,
-    /// Capture mode: "screen" (full screen) or "window" (active window)
+    /// Capture mode: "screen" (full screen), "foreground" (active window), or "window" (by title pattern)
     #[serde(default = "default_capture_mode")]
     pub capture_mode: String,
     /// Target window title pattern (only used if capture_mode = "window")
@@ -110,7 +110,7 @@ fn default_hotkey_60s() -> String {
 }
 
 fn default_capture_mode() -> String {
-    "screen".to_string()
+    "foreground".to_string()
 }
 
 fn default_ocr_language() -> String {
@@ -162,7 +162,7 @@ impl Default for VisionConfig {
         Self {
             enabled: true,
             screenshot_enabled: true,
-            capture_mode: default_capture_mode(),
+            capture_mode: "foreground".to_string(),
             window_pattern: None,
             ocr_enabled: true,
             ocr_language: default_ocr_language(),

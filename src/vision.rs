@@ -54,6 +54,8 @@ impl From<std::io::Error> for VisionError {
 pub enum CaptureMode {
     /// Capture the entire primary screen
     Screen,
+    /// Capture the currently active/foreground window
+    Foreground,
     /// Capture a specific window by title pattern
     Window(String),
 }
@@ -62,12 +64,13 @@ impl CaptureMode {
     /// Create from config string
     pub fn from_config(mode: &str, window_pattern: Option<&str>) -> Self {
         match mode.to_lowercase().as_str() {
+            "foreground" | "active" => CaptureMode::Foreground,
             "window" => {
                 if let Some(pattern) = window_pattern {
                     CaptureMode::Window(pattern.to_string())
                 } else {
-                    // Fall back to screen capture if no pattern specified
-                    CaptureMode::Screen
+                    // Fall back to foreground capture if no pattern specified
+                    CaptureMode::Foreground
                 }
             }
             _ => CaptureMode::Screen,
@@ -168,6 +171,7 @@ impl VisionCapture {
         let screenshot = if self.screenshot_enabled {
             let ss = match &self.capture_mode {
                 CaptureMode::Screen => Screenshot::capture_screen()?,
+                CaptureMode::Foreground => Screenshot::capture_foreground()?,
                 CaptureMode::Window(pattern) => Screenshot::capture_window(pattern)?,
             };
             Some(ss)

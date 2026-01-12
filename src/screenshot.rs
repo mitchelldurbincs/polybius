@@ -69,6 +69,20 @@ impl Screenshot {
         }
     }
 
+    /// Capture the currently active/foreground window
+    pub fn capture_foreground() -> Result<Self, ScreenshotError> {
+        #[cfg(windows)]
+        {
+            capture_foreground_windows()
+        }
+
+        #[cfg(not(windows))]
+        {
+            // Fall back to full screen capture on non-Windows
+            capture_screen_other()
+        }
+    }
+
     /// Save screenshot as PNG
     pub fn save_png(&self, path: &Path) -> Result<(), ScreenshotError> {
         use image::{ImageBuffer, Rgba};
@@ -129,6 +143,36 @@ fn capture_window_windows(title_pattern: &str) -> Result<Screenshot, ScreenshotE
         })?;
 
     let buf = capture_window(target_hwnd.hwnd)
+        .map_err(|e| ScreenshotError::CaptureError(format!("{:?}", e)))?;
+
+    // win-screenshot returns BGRA, convert to RGBA
+    let mut rgba_data = buf.pixels.clone();
+    for chunk in rgba_data.chunks_exact_mut(4) {
+        chunk.swap(0, 2); // Swap B and R
+    }
+
+    Ok(Screenshot {
+        width: buf.width,
+        height: buf.height,
+        data: rgba_data,
+    })
+}
+
+/// Capture the foreground (active) window on Windows
+#[cfg(windows)]
+fn capture_foreground_windows() -> Result<Screenshot, ScreenshotError> {
+    use win_screenshot::prelude::*;
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+
+    // Get the foreground window handle
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.0.is_null() {
+        return Err(ScreenshotError::CaptureError(
+            "No foreground window found".to_string(),
+        ));
+    }
+
+    let buf = capture_window(hwnd.0 as isize)
         .map_err(|e| ScreenshotError::CaptureError(format!("{:?}", e)))?;
 
     // win-screenshot returns BGRA, convert to RGBA
