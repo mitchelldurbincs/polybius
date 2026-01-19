@@ -34,3 +34,28 @@ func TestEnrichText(t *testing.T) {
 		t.Error("Expected to find 你好 in segmented words")
 	}
 }
+
+func TestI1Scoring(t *testing.T) {
+	e, err := NewEnricher("../../data/cedict_ts.u8")
+	if err != nil {
+		t.Fatalf("Failed to create enricher: %v", err)
+	}
+
+	// Mock vocabulary: user knows 你好 but not 世界
+	knownWords := map[string]bool{"你好": true}
+	isKnown := func(word string) bool { return knownWords[word] }
+
+	result := e.EnrichWithVocab("你好世界", isKnown)
+
+	if result.I1Score < 0.4 || result.I1Score > 0.6 {
+		t.Errorf("Expected i+1 score around 0.5 (1 of 2 known), got %f", result.I1Score)
+	}
+
+	if len(result.UnknownWords) != 1 {
+		t.Errorf("Expected 1 unknown word, got %d", len(result.UnknownWords))
+	}
+
+	if result.UnknownWords[0] != "世界" {
+		t.Errorf("Expected unknown word to be 世界, got %s", result.UnknownWords[0])
+	}
+}
