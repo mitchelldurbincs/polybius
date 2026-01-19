@@ -127,7 +127,7 @@ FSRS (Free Spaced Repetition Scheduler) - latest spec - schedules reviews:
 | 3 (Good) | Knew it | Normal interval |
 | 4 (Easy) | Instant recall | Longer interval |
 
-**Note:** Use the most up-to-date FSRS specification (FSRS-5 or later) when implementing.
+**Note:** Use FSRS-6 (21 parameters, trainable forgetting curve decay). Verify `go-fsrs` supports FSRS-6 or use `fsrs-rs` bindings. Reference: [open-spaced-repetition/fsrs4anki](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm)
 
 ### Vocabulary Feedback Loop
 
