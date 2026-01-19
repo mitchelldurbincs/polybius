@@ -41,3 +41,23 @@ func TestCEDICTCharacterFallback(t *testing.T) {
 		t.Error("Pinyin should not be empty for single character")
 	}
 }
+
+func TestPinyinToneConversion(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"ni3 hao3", "nǐ hǎo"},
+		{"zhong1 guo2", "zhōng guó"},
+		{"ma1 ma2 ma3 ma4 ma5", "mā má mǎ mà ma"},
+		{"nv3", "nǚ"},
+		{"lv4", "lǜ"},
+	}
+
+	for _, tt := range tests {
+		got := convertPinyinTones(tt.input)
+		if got != tt.expected {
+			t.Errorf("convertPinyinTones(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
