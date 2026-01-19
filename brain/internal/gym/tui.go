@@ -47,29 +47,37 @@ type ReviewCard struct {
 }
 
 type Model struct {
-	cards      []*ReviewCard
-	currentIdx int
-	revealed   bool
-	quitting   bool
-	completed  int
-	ratings    []int // Track ratings for summary
-	onRate     func(cardID int64, rating int) error
-	imageWin   *ImageWindow
+	cards       []*ReviewCard
+	currentIdx  int
+	revealed    bool
+	quitting    bool
+	completed   int
+	ratings     []int // Track ratings for summary
+	onRate      func(cardID int64, rating int) error
+	imageWin    *ImageWindow
+	audioPlayer *AudioPlayer
 }
 
 func NewModel(cards []*ReviewCard, onRate func(cardID int64, rating int) error) Model {
 	return Model{
-		cards:    cards,
-		onRate:   onRate,
-		ratings:  make([]int, 0),
-		imageWin: NewImageWindow(),
+		cards:       cards,
+		onRate:      onRate,
+		ratings:     make([]int, 0),
+		imageWin:    NewImageWindow(),
+		audioPlayer: NewAudioPlayer(),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	// Show first card's image if available
-	if len(m.cards) > 0 && m.cards[0].ImageFile != "" {
-		m.imageWin.Show(m.cards[0].ImageFile)
+	// Show first card's image and play audio if available
+	if len(m.cards) > 0 {
+		card := m.cards[0]
+		if card.ImageFile != "" {
+			m.imageWin.Show(card.ImageFile)
+		}
+		if card.AudioFile != "" {
+			m.audioPlayer.PlayAsync(card.AudioFile)
+		}
 	}
 	return nil
 }
@@ -103,11 +111,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentIdx++
 				m.revealed = false
 
-				// Show next card's image
+				// Show next card's image and play audio
 				if m.currentIdx < len(m.cards) {
 					nextCard := m.cards[m.currentIdx]
 					if nextCard.ImageFile != "" {
 						m.imageWin.Show(nextCard.ImageFile)
+					}
+					if nextCard.AudioFile != "" {
+						m.audioPlayer.PlayAsync(nextCard.AudioFile)
 					}
 				}
 
@@ -120,7 +131,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "r": // Replay audio
 			if m.currentIdx < len(m.cards) {
-				// Audio playback will be handled by caller
+				card := m.cards[m.currentIdx]
+				if card.AudioFile != "" {
+					m.audioPlayer.PlayAsync(card.AudioFile)
+				}
 			}
 			return m, nil
 		}
