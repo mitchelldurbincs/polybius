@@ -29,11 +29,24 @@ var (
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 
+	promptStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("229")).
+			Italic(true)
+
 	correctStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("42"))
 
 	incorrectStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196"))
+)
+
+// RevealState tracks the 3-state reveal progression for audio-first learning
+type RevealState int
+
+const (
+	StateAudioOnly     RevealState = iota // Screenshot + audio, no text
+	StateHanziRevealed                    // + Hanzi sentence visible
+	StateFullRevealed                     // + Pinyin + Definition
 )
 
 type ReviewCard struct {
@@ -49,7 +62,7 @@ type ReviewCard struct {
 type Model struct {
 	cards       []*ReviewCard
 	currentIdx  int
-	revealed    bool
+	revealState RevealState
 	quitting    bool
 	completed   int
 	ratings     []int // Track ratings for summary
@@ -61,6 +74,7 @@ type Model struct {
 func NewModel(cards []*ReviewCard, onRate func(cardID int64, rating int) error) Model {
 	return Model{
 		cards:       cards,
+		revealState: StateAudioOnly,
 		onRate:      onRate,
 		ratings:     make([]int, 0),
 		imageWin:    NewImageWindow(),
@@ -90,14 +104,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 
-		case " ": // Space to reveal
-			if !m.revealed && m.currentIdx < len(m.cards) {
-				m.revealed = true
+		case " ": // Space advances reveal state
+			if m.currentIdx < len(m.cards) {
+				switch m.revealState {
+				case StateAudioOnly:
+					m.revealState = StateHanziRevealed
+				case StateHanziRevealed:
+					m.revealState = StateFullRevealed
+				case StateFullRevealed:
+					// Already fully revealed, space does nothing
+				}
 			}
 			return m, nil
 
 		case "1", "2", "3", "4":
-			if m.revealed && m.currentIdx < len(m.cards) {
+			// Can only rate after at least seeing Hanzi
+			if m.revealState >= StateHanziRevealed && m.currentIdx < len(m.cards) {
 				rating := int(msg.String()[0] - '0')
 				card := m.cards[m.currentIdx]
 
@@ -109,7 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ratings = append(m.ratings, rating)
 				m.completed++
 				m.currentIdx++
-				m.revealed = false
+				m.revealState = StateAudioOnly // Reset for next card
 
 				// Show next card's image and play audio
 				if m.currentIdx < len(m.cards) {
@@ -157,27 +179,43 @@ func (m Model) View() string {
 	// Header
 	header := titleStyle.Render(fmt.Sprintf("POLYBIUS GYM    Card %d/%d", m.currentIdx+1, len(m.cards)))
 
-	// Card content
+	// Card content varies by reveal state
 	var content strings.Builder
-	content.WriteString(fmt.Sprintf("Sentence: %s\n\n", highlightWord(card.Sentence, card.TargetWord)))
-	content.WriteString(fmt.Sprintf("Target: %s\n", targetStyle.Render(card.TargetWord)))
 
-	if m.revealed {
+	switch m.revealState {
+	case StateAudioOnly:
+		// Only show that audio is playing, no text - train listening!
+		content.WriteString("Listen to the audio...\n\n")
+		content.WriteString("Audio: [Playing...]\n\n")
+		content.WriteString(hiddenStyle.Render("[Press Space to reveal what was said]"))
+
+	case StateHanziRevealed:
+		// Show the sentence with target highlighted - can self-grade now
+		content.WriteString(fmt.Sprintf("Sentence: %s\n\n", highlightWord(card.Sentence, card.TargetWord)))
+		content.WriteString(fmt.Sprintf("Target: %s\n", targetStyle.Render(card.TargetWord)))
+		content.WriteString(fmt.Sprintf("Pinyin: %s\n", hiddenStyle.Render("[hidden]")))
+		content.WriteString(fmt.Sprintf("Meaning: %s\n\n", hiddenStyle.Render("[hidden]")))
+		content.WriteString(promptStyle.Render("Did you hear it correctly? Rate now or [Space] for meaning"))
+
+	case StateFullRevealed:
+		// Show everything
+		content.WriteString(fmt.Sprintf("Sentence: %s\n\n", highlightWord(card.Sentence, card.TargetWord)))
+		content.WriteString(fmt.Sprintf("Target: %s\n", targetStyle.Render(card.TargetWord)))
 		content.WriteString(fmt.Sprintf("Pinyin: %s\n", card.Pinyin))
 		content.WriteString(fmt.Sprintf("Meaning: %s\n", card.Definition))
-	} else {
-		content.WriteString(fmt.Sprintf("Pinyin: %s\n", hiddenStyle.Render("[press space to reveal]")))
-		content.WriteString(fmt.Sprintf("Meaning: %s\n", hiddenStyle.Render("[press space to reveal]")))
 	}
 
 	cardView := cardStyle.Render(content.String())
 
-	// Help
+	// Help text changes based on state
 	var help string
-	if m.revealed {
-		help = helpStyle.Render("[1] Again  [2] Hard  [3] Good  [4] Easy    [R] Replay  [Q] Quit")
-	} else {
-		help = helpStyle.Render("[Space] Reveal    [R] Replay  [Q] Quit")
+	switch m.revealState {
+	case StateAudioOnly:
+		help = helpStyle.Render("[Space] Reveal Hanzi    [R] Replay    [Q] Quit")
+	case StateHanziRevealed:
+		help = helpStyle.Render("[1-4] Rate    [Space] Show Meaning    [R] Replay    [Q] Quit")
+	case StateFullRevealed:
+		help = helpStyle.Render("[1] Again  [2] Hard  [3] Good  [4] Easy    [R] Replay    [Q] Quit")
 	}
 
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n", header, cardView, help)
