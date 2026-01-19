@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(cargo build:*)",
-      "WebSearch"
+      "WebSearch",
+      "Skill(superpowers:brainstorming)",
+      "WebFetch(domain:github.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Skill(superpowers:writing-plans)",
+      "Bash(cargo check:*)"
     ]
   }
 }

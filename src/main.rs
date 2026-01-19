@@ -64,14 +64,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Determine which buffers to enable
     let mut enabled_buffers = Vec::new();
+    if config.audio.buffer_5s {
+        enabled_buffers.push(BufferDuration::Seconds5);
+    }
     if config.audio.buffer_10s {
         enabled_buffers.push(BufferDuration::Seconds10);
     }
-    if config.audio.buffer_30s {
-        enabled_buffers.push(BufferDuration::Seconds30);
-    }
-    if config.audio.buffer_60s {
-        enabled_buffers.push(BufferDuration::Seconds60);
+    if config.audio.buffer_15s {
+        enabled_buffers.push(BufferDuration::Seconds15);
     }
 
     if enabled_buffers.is_empty() {
@@ -83,21 +83,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. Register hotkeys
     let hotkeys = HotkeyManager::new(
+        &config.hotkeys.save_5s,
         &config.hotkeys.save_10s,
-        &config.hotkeys.save_30s,
-        &config.hotkeys.save_60s,
+        &config.hotkeys.save_15s,
         &config.hotkeys.screenshot,
         &config.hotkeys.region_select,
+        config.audio.buffer_5s,
         config.audio.buffer_10s,
-        config.audio.buffer_30s,
-        config.audio.buffer_60s,
+        config.audio.buffer_15s,
     )?;
 
     // 6. Create system tray
     let tray = TrayManager::new(
+        config.audio.buffer_5s,
         config.audio.buffer_10s,
-        config.audio.buffer_30s,
-        config.audio.buffer_60s,
+        config.audio.buffer_15s,
     )?;
 
     println!("\n[RECORDING] Capturing audio to ring buffers...");
@@ -144,6 +144,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Check for menu events (non-blocking)
         if let Ok(event) = MenuEvent::receiver().try_recv() {
             match event.id.0.as_str() {
+                tray::MENU_SAVE_5S => {
+                    handle_save(
+                        &mut audio,
+                        &vision,
+                        BufferDuration::Seconds5,
+                        &save_dir,
+                        show_notifications,
+                        &config,
+                    )?;
+                }
                 tray::MENU_SAVE_10S => {
                     handle_save(
                         &mut audio,
@@ -154,21 +164,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &config,
                     )?;
                 }
-                tray::MENU_SAVE_30S => {
+                tray::MENU_SAVE_15S => {
                     handle_save(
                         &mut audio,
                         &vision,
-                        BufferDuration::Seconds30,
-                        &save_dir,
-                        show_notifications,
-                        &config,
-                    )?;
-                }
-                tray::MENU_SAVE_60S => {
-                    handle_save(
-                        &mut audio,
-                        &vision,
-                        BufferDuration::Seconds60,
+                        BufferDuration::Seconds15,
                         &save_dir,
                         show_notifications,
                         &config,

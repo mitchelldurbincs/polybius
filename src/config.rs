@@ -42,15 +42,15 @@ pub struct GeneralConfig {
 /// Hotkey configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotkeyConfig {
+    /// Hotkey for saving 5 seconds
+    #[serde(default = "default_hotkey_5s")]
+    pub save_5s: String,
     /// Hotkey for saving 10 seconds
     #[serde(default = "default_hotkey_10s")]
     pub save_10s: String,
-    /// Hotkey for saving 30 seconds
-    #[serde(default = "default_hotkey_30s")]
-    pub save_30s: String,
-    /// Hotkey for saving 60 seconds
-    #[serde(default = "default_hotkey_60s")]
-    pub save_60s: String,
+    /// Hotkey for saving 15 seconds
+    #[serde(default = "default_hotkey_15s")]
+    pub save_15s: String,
     /// Hotkey for screenshot-only (save + clipboard)
     #[serde(default = "default_hotkey_screenshot")]
     pub screenshot: String,
@@ -62,15 +62,15 @@ pub struct HotkeyConfig {
 /// Audio capture settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioConfig {
+    /// Enable 5 second buffer
+    #[serde(default = "default_true")]
+    pub buffer_5s: bool,
     /// Enable 10 second buffer
     #[serde(default = "default_true")]
     pub buffer_10s: bool,
-    /// Enable 30 second buffer
+    /// Enable 15 second buffer
     #[serde(default = "default_true")]
-    pub buffer_30s: bool,
-    /// Enable 60 second buffer
-    #[serde(default)]
-    pub buffer_60s: bool,
+    pub buffer_15s: bool,
 }
 
 /// Vision (screenshot + OCR) settings
@@ -116,15 +116,15 @@ fn default_true() -> bool {
     true
 }
 
-fn default_hotkey_10s() -> String {
+fn default_hotkey_5s() -> String {
     "CTRL+ALT+1".to_string()
 }
 
-fn default_hotkey_30s() -> String {
+fn default_hotkey_10s() -> String {
     "CTRL+ALT+2".to_string()
 }
 
-fn default_hotkey_60s() -> String {
+fn default_hotkey_15s() -> String {
     "CTRL+ALT+3".to_string()
 }
 
@@ -167,9 +167,9 @@ impl Default for GeneralConfig {
 impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
+            save_5s: default_hotkey_5s(),
             save_10s: default_hotkey_10s(),
-            save_30s: default_hotkey_30s(),
-            save_60s: default_hotkey_60s(),
+            save_15s: default_hotkey_15s(),
             screenshot: default_hotkey_screenshot(),
             region_select: default_hotkey_region(),
         }
@@ -179,9 +179,9 @@ impl Default for HotkeyConfig {
 impl Default for AudioConfig {
     fn default() -> Self {
         Self {
+            buffer_5s: true,
             buffer_10s: true,
-            buffer_30s: true,
-            buffer_60s: false, // Disabled by default to save memory
+            buffer_15s: true,
         }
     }
 }

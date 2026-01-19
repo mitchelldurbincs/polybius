@@ -19,9 +19,9 @@ pub enum HotkeyAction {
 /// Hotkey manager for the application
 pub struct HotkeyManager {
     _manager: GlobalHotKeyManager,
+    pub hotkey_5s: Option<(HotKey, u32)>,
     pub hotkey_10s: Option<(HotKey, u32)>,
-    pub hotkey_30s: Option<(HotKey, u32)>,
-    pub hotkey_60s: Option<(HotKey, u32)>,
+    pub hotkey_15s: Option<(HotKey, u32)>,
     pub hotkey_screenshot: Option<(HotKey, u32)>,
     pub hotkey_region: Option<(HotKey, u32)>,
 }
@@ -29,16 +29,35 @@ pub struct HotkeyManager {
 impl HotkeyManager {
     /// Create a new hotkey manager and register hotkeys based on config
     pub fn new(
+        hotkey_5s_str: &str,
         hotkey_10s_str: &str,
-        hotkey_30s_str: &str,
-        hotkey_60s_str: &str,
+        hotkey_15s_str: &str,
         hotkey_screenshot_str: &str,
         hotkey_region_str: &str,
+        enabled_5s: bool,
         enabled_10s: bool,
-        enabled_30s: bool,
-        enabled_60s: bool,
+        enabled_15s: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let manager = GlobalHotKeyManager::new()?;
+
+        let hotkey_5s = if enabled_5s {
+            match parse_hotkey(hotkey_5s_str) {
+                Ok(hk) => {
+                    manager.register(hk)?;
+                    println!("[OK] Registered hotkey: {} (5s)", hotkey_5s_str);
+                    Some((hk, hk.id()))
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[WARN] Failed to parse 5s hotkey '{}': {}",
+                        hotkey_5s_str, e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         let hotkey_10s = if enabled_10s {
             match parse_hotkey(hotkey_10s_str) {
@@ -59,36 +78,17 @@ impl HotkeyManager {
             None
         };
 
-        let hotkey_30s = if enabled_30s {
-            match parse_hotkey(hotkey_30s_str) {
+        let hotkey_15s = if enabled_15s {
+            match parse_hotkey(hotkey_15s_str) {
                 Ok(hk) => {
                     manager.register(hk)?;
-                    println!("[OK] Registered hotkey: {} (30s)", hotkey_30s_str);
+                    println!("[OK] Registered hotkey: {} (15s)", hotkey_15s_str);
                     Some((hk, hk.id()))
                 }
                 Err(e) => {
                     eprintln!(
-                        "[WARN] Failed to parse 30s hotkey '{}': {}",
-                        hotkey_30s_str, e
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        let hotkey_60s = if enabled_60s {
-            match parse_hotkey(hotkey_60s_str) {
-                Ok(hk) => {
-                    manager.register(hk)?;
-                    println!("[OK] Registered hotkey: {} (60s)", hotkey_60s_str);
-                    Some((hk, hk.id()))
-                }
-                Err(e) => {
-                    eprintln!(
-                        "[WARN] Failed to parse 60s hotkey '{}': {}",
-                        hotkey_60s_str, e
+                        "[WARN] Failed to parse 15s hotkey '{}': {}",
+                        hotkey_15s_str, e
                     );
                     None
                 }
@@ -131,9 +131,9 @@ impl HotkeyManager {
 
         Ok(Self {
             _manager: manager,
+            hotkey_5s,
             hotkey_10s,
-            hotkey_30s,
-            hotkey_60s,
+            hotkey_15s,
             hotkey_screenshot,
             hotkey_region,
         })
@@ -141,19 +141,19 @@ impl HotkeyManager {
 
     /// Get the buffer duration for a given hotkey ID (legacy method)
     pub fn duration_for_id(&self, id: u32) -> Option<BufferDuration> {
+        if let Some((_, hk_id)) = self.hotkey_5s {
+            if hk_id == id {
+                return Some(BufferDuration::Seconds5);
+            }
+        }
         if let Some((_, hk_id)) = self.hotkey_10s {
             if hk_id == id {
                 return Some(BufferDuration::Seconds10);
             }
         }
-        if let Some((_, hk_id)) = self.hotkey_30s {
+        if let Some((_, hk_id)) = self.hotkey_15s {
             if hk_id == id {
-                return Some(BufferDuration::Seconds30);
-            }
-        }
-        if let Some((_, hk_id)) = self.hotkey_60s {
-            if hk_id == id {
-                return Some(BufferDuration::Seconds60);
+                return Some(BufferDuration::Seconds15);
             }
         }
         None
@@ -161,19 +161,19 @@ impl HotkeyManager {
 
     /// Get the action for a given hotkey ID
     pub fn action_for_id(&self, id: u32) -> Option<HotkeyAction> {
+        if let Some((_, hk_id)) = self.hotkey_5s {
+            if hk_id == id {
+                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds5));
+            }
+        }
         if let Some((_, hk_id)) = self.hotkey_10s {
             if hk_id == id {
                 return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds10));
             }
         }
-        if let Some((_, hk_id)) = self.hotkey_30s {
+        if let Some((_, hk_id)) = self.hotkey_15s {
             if hk_id == id {
-                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds30));
-            }
-        }
-        if let Some((_, hk_id)) = self.hotkey_60s {
-            if hk_id == id {
-                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds60));
+                return Some(HotkeyAction::SaveBuffer(BufferDuration::Seconds15));
             }
         }
         if let Some((_, hk_id)) = self.hotkey_screenshot {

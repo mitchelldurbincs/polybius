@@ -1,19 +1,12 @@
 //! Region selection overlay UI
 //!
-//! Displays a semi-transparent window showing the captured screenshot
-//! and allows the user to drag-select a region.
+//! Displays a window showing the captured screenshot and allows
+//! the user to drag-select a region. Uses raw Win32 APIs to avoid
+//! winit's event loop limitation.
 
 use crate::config::CaptureRegion;
 use crate::screenshot::Screenshot;
 use crate::window_utils::WindowInfo;
-use std::num::NonZeroU32;
-use std::sync::Arc;
-use winit::application::ApplicationHandler;
-use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, NamedKey};
-use winit::window::{Window, WindowId};
 
 /// Result of region selection
 #[derive(Debug)]
@@ -24,312 +17,488 @@ pub enum RegionSelectionResult {
     Cancelled,
 }
 
-/// State for the region selection process
-struct RegionSelector {
-    screenshot: Screenshot,
-    window_info: WindowInfo,
-    window: Option<Arc<Window>>,
-    surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
+#[cfg(windows)]
+mod windows_impl {
+    use super::*;
+    use std::cell::RefCell;
+    use windows::core::w;
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows::Win32::Graphics::Gdi::{
+        BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush,
+        DeleteDC, DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC,
+        SelectObject, SetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
+        PAINTSTRUCT, SRCCOPY,
+    };
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+        GetMessageW, PostQuitMessage, RegisterClassW, ShowWindow, TranslateMessage, CS_HREDRAW,
+        CS_VREDRAW, MSG, SW_SHOW, WINDOW_EX_STYLE, WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN,
+        WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WNDCLASSW, WS_POPUP, WS_VISIBLE,
+    };
 
-    // Selection state
-    is_selecting: bool,
-    start_pos: Option<(i32, i32)>,
-    current_pos: Option<(i32, i32)>,
-    result: Option<RegionSelectionResult>,
-}
+    const VK_ESCAPE: usize = 0x1B;
+    const VK_RETURN: usize = 0x0D;
 
-impl RegionSelector {
-    fn new(screenshot: Screenshot, window_info: WindowInfo) -> Self {
-        Self {
-            screenshot,
-            window_info,
-            window: None,
-            surface: None,
-            is_selecting: false,
-            start_pos: None,
-            current_pos: None,
-            result: None,
-        }
+    struct OverlayState {
+        screenshot: Screenshot,
+        window_info: WindowInfo,
+        is_selecting: bool,
+        start_x: i32,
+        start_y: i32,
+        current_x: i32,
+        current_y: i32,
+        result: Option<RegionSelectionResult>,
+        hdc_mem: HDC,
+        hbm_screenshot: windows::Win32::Graphics::Gdi::HBITMAP,
     }
 
-    fn render(&mut self) {
-        // Get selection rectangle first (before borrowing surface mutably)
-        let selection = self.get_selection_rect();
-
-        let Some(surface) = &mut self.surface else {
-            return;
-        };
-        let Some(window) = &self.window else {
-            return;
-        };
-
-        let size = window.inner_size();
-        let width = size.width as usize;
-        let height = size.height as usize;
-
-        if width == 0 || height == 0 {
-            return;
-        }
-
-        // Resize surface buffer if needed
-        if surface
-            .resize(
-                NonZeroU32::new(size.width).unwrap(),
-                NonZeroU32::new(size.height).unwrap(),
-            )
-            .is_err()
-        {
-            return;
-        }
-
-        let Ok(mut buffer) = surface.buffer_mut() else {
-            return;
-        };
-
-        // Render each pixel
-        for y in 0..height {
-            for x in 0..width {
-                let pixel_idx = y * width + x;
-
-                // Get source pixel from screenshot (scale if needed)
-                let src_x = (x * self.screenshot.width as usize) / width;
-                let src_y = (y * self.screenshot.height as usize) / height;
-                let src_idx = (src_y * self.screenshot.width as usize + src_x) * 4;
-
-                let (r, g, b) = if src_idx + 2 < self.screenshot.data.len() {
-                    (
-                        self.screenshot.data[src_idx] as u32,
-                        self.screenshot.data[src_idx + 1] as u32,
-                        self.screenshot.data[src_idx + 2] as u32,
-                    )
-                } else {
-                    (0, 0, 0)
-                };
-
-                // Apply dark overlay unless in selection region
-                let (r, g, b) = if let Some((sx, sy, sw, sh)) = selection {
-                    let xi = x as i32;
-                    let yi = y as i32;
-                    let in_selection = xi >= sx
-                        && xi < sx + sw as i32
-                        && yi >= sy
-                        && yi < sy + sh as i32;
-
-                    if in_selection {
-                        // Full brightness in selection
-                        (r, g, b)
-                    } else {
-                        // Darkened outside selection
-                        (r / 2, g / 2, b / 2)
-                    }
-                } else {
-                    // No selection yet - show darkened
-                    (r / 2, g / 2, b / 2)
-                };
-
-                // Draw selection border
-                let on_border = if let Some((sx, sy, sw, sh)) = selection {
-                    let border_width = 2i32;
-                    let xi = x as i32;
-                    let yi = y as i32;
-
-                    // Check if on horizontal borders
-                    let on_top = yi >= sy - border_width
-                        && yi < sy + border_width
-                        && xi >= sx - border_width
-                        && xi < sx + sw as i32 + border_width;
-                    let on_bottom = yi >= sy + sh as i32 - border_width
-                        && yi < sy + sh as i32 + border_width
-                        && xi >= sx - border_width
-                        && xi < sx + sw as i32 + border_width;
-
-                    // Check if on vertical borders
-                    let on_left = xi >= sx - border_width
-                        && xi < sx + border_width
-                        && yi >= sy - border_width
-                        && yi < sy + sh as i32 + border_width;
-                    let on_right = xi >= sx + sw as i32 - border_width
-                        && xi < sx + sw as i32 + border_width
-                        && yi >= sy - border_width
-                        && yi < sy + sh as i32 + border_width;
-
-                    on_top || on_bottom || on_left || on_right
-                } else {
-                    false
-                };
-
-                let (r, g, b) = if on_border {
-                    (255u32, 100u32, 100u32) // Red border
-                } else {
-                    (r, g, b)
-                };
-
-                buffer[pixel_idx] = (r << 16) | (g << 8) | b;
-            }
-        }
-
-        buffer.present().ok();
+    thread_local! {
+        static OVERLAY_STATE: RefCell<Option<OverlayState>> = const { RefCell::new(None) };
     }
 
-    fn get_selection_rect(&self) -> Option<(i32, i32, u32, u32)> {
-        let start = self.start_pos?;
-        let current = self.current_pos?;
+    pub fn select_region(
+        screenshot: Screenshot,
+        window_info: WindowInfo,
+    ) -> Result<RegionSelectionResult, Box<dyn std::error::Error>> {
+        unsafe {
+            let hinstance = GetModuleHandleW(None)?;
 
-        let x = start.0.min(current.0);
-        let y = start.1.min(current.1);
-        let width = (start.0 - current.0).unsigned_abs();
-        let height = (start.1 - current.1).unsigned_abs();
-
-        if width > 0 && height > 0 {
-            Some((x, y, width, height))
-        } else {
-            None
-        }
-    }
-
-    fn finish_selection(&mut self) {
-        if let Some((x, y, width, height)) = self.get_selection_rect() {
-            // Convert screen coordinates to window-relative coordinates
-            let window = self.window.as_ref().unwrap();
-            let window_size = window.inner_size();
-
-            // Scale coordinates back to original screenshot size
-            let scale_x = self.screenshot.width as f64 / window_size.width as f64;
-            let scale_y = self.screenshot.height as f64 / window_size.height as f64;
-
-            let region = CaptureRegion {
-                x: (x as f64 * scale_x) as i32,
-                y: (y as f64 * scale_y) as i32,
-                width: (width as f64 * scale_x) as u32,
-                height: (height as f64 * scale_y) as u32,
+            // Register window class
+            let class_name = w!("MinerRegionOverlay");
+            let wc = WNDCLASSW {
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(window_proc),
+                hInstance: hinstance.into(),
+                lpszClassName: class_name,
+                hCursor: windows::Win32::UI::WindowsAndMessaging::LoadCursorW(
+                    None,
+                    windows::Win32::UI::WindowsAndMessaging::IDC_CROSS,
+                )
+                .unwrap_or_default(),
+                ..Default::default()
             };
 
-            self.result = Some(RegionSelectionResult::Selected(region));
-        } else {
-            self.result = Some(RegionSelectionResult::Cancelled);
+            RegisterClassW(&wc);
+
+            // Create memory DC and bitmap for the screenshot
+            let hdc_screen = GetDC(None);
+            let hdc_mem = CreateCompatibleDC(hdc_screen);
+            let hbm_screenshot = CreateCompatibleBitmap(
+                hdc_screen,
+                screenshot.width as i32,
+                screenshot.height as i32,
+            );
+            SelectObject(hdc_mem, hbm_screenshot);
+
+            // Convert RGBA to BGR for Windows bitmap (bottom-up)
+            let mut bgr_data: Vec<u8> =
+                Vec::with_capacity((screenshot.width * screenshot.height * 4) as usize);
+            for y in (0..screenshot.height).rev() {
+                for x in 0..screenshot.width {
+                    let idx = ((y * screenshot.width + x) * 4) as usize;
+                    bgr_data.push(screenshot.data[idx + 2]); // B
+                    bgr_data.push(screenshot.data[idx + 1]); // G
+                    bgr_data.push(screenshot.data[idx]); // R
+                    bgr_data.push(0); // Padding
+                }
+            }
+
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: screenshot.width as i32,
+                    biHeight: screenshot.height as i32,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            SetDIBits(
+                hdc_mem,
+                hbm_screenshot,
+                0,
+                screenshot.height,
+                bgr_data.as_ptr() as *const _,
+                &bmi,
+                DIB_RGB_COLORS,
+            );
+
+            ReleaseDC(None, hdc_screen);
+
+            // Store state
+            OVERLAY_STATE.with(|state| {
+                *state.borrow_mut() = Some(OverlayState {
+                    screenshot,
+                    window_info: window_info.clone(),
+                    is_selecting: false,
+                    start_x: 0,
+                    start_y: 0,
+                    current_x: 0,
+                    current_y: 0,
+                    result: None,
+                    hdc_mem,
+                    hbm_screenshot,
+                });
+            });
+
+            // Create the overlay window
+            let hwnd = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                class_name,
+                w!("Select Region - Drag to select, ESC to cancel"),
+                WS_POPUP | WS_VISIBLE,
+                window_info.x,
+                window_info.y,
+                window_info.width as i32,
+                window_info.height as i32,
+                None,
+                None,
+                hinstance,
+                None,
+            )?;
+
+            ShowWindow(hwnd, SW_SHOW);
+
+            // Message loop
+            let mut msg = MSG::default();
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+
+            // Cleanup
+            DeleteDC(hdc_mem);
+            DeleteObject(hbm_screenshot);
+
+            // Get result
+            let result = OVERLAY_STATE.with(|state| {
+                state
+                    .borrow_mut()
+                    .take()
+                    .and_then(|s| s.result)
+                    .unwrap_or(RegionSelectionResult::Cancelled)
+            });
+
+            Ok(result)
         }
     }
-}
 
-impl ApplicationHandler for RegionSelector {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
-            return;
-        }
+    unsafe extern "system" fn window_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_PAINT => {
+                let mut ps = PAINTSTRUCT::default();
+                let hdc = BeginPaint(hwnd, &mut ps);
 
-        // Create window attributes
-        let window_attrs = Window::default_attributes()
-            .with_title("Select Region")
-            .with_inner_size(PhysicalSize::new(
-                self.window_info.width,
-                self.window_info.height,
-            ))
-            .with_position(PhysicalPosition::new(self.window_info.x, self.window_info.y))
-            .with_decorations(false)
-            .with_resizable(false);
+                OVERLAY_STATE.with(|state| {
+                    if let Some(ref state) = *state.borrow() {
+                        let mut rect = RECT::default();
+                        GetClientRect(hwnd, &mut rect);
+                        let width = rect.right - rect.left;
+                        let height = rect.bottom - rect.top;
 
-        match event_loop.create_window(window_attrs) {
-            Ok(window) => {
-                let window = Arc::new(window);
+                        // Create a temporary DC for compositing
+                        let hdc_temp = CreateCompatibleDC(hdc);
+                        let hbm_temp = CreateCompatibleBitmap(hdc, width, height);
+                        SelectObject(hdc_temp, hbm_temp);
 
-                // Create softbuffer surface
-                let context = softbuffer::Context::new(window.clone()).ok();
-                if let Some(context) = context {
-                    let surface = softbuffer::Surface::new(&context, window.clone()).ok();
-                    self.surface = surface;
-                }
+                        // Draw screenshot scaled to window size
+                        windows::Win32::Graphics::Gdi::StretchBlt(
+                            hdc_temp,
+                            0,
+                            0,
+                            width,
+                            height,
+                            state.hdc_mem,
+                            0,
+                            0,
+                            state.screenshot.width as i32,
+                            state.screenshot.height as i32,
+                            SRCCOPY,
+                        );
 
-                self.window = Some(window);
-            }
-            Err(e) => {
-                eprintln!("[ERROR] Failed to create overlay window: {}", e);
-                self.result = Some(RegionSelectionResult::Cancelled);
-                event_loop.exit();
-            }
-        }
-    }
+                        // Apply dark overlay to non-selected areas
+                        let dark_brush = CreateSolidBrush(
+                            windows::Win32::Foundation::COLORREF(0x00404040),
+                        );
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => {
-                self.result = Some(RegionSelectionResult::Cancelled);
-                event_loop.exit();
-            }
+                        // If we have a selection, darken everything except the selection
+                        if state.is_selecting || (state.start_x != state.current_x) {
+                            let sel_left = state.start_x.min(state.current_x);
+                            let sel_top = state.start_y.min(state.current_y);
+                            let sel_right = state.start_x.max(state.current_x);
+                            let sel_bottom = state.start_y.max(state.current_y);
 
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        logical_key,
-                        state: ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => match logical_key {
-                Key::Named(NamedKey::Escape) => {
-                    self.result = Some(RegionSelectionResult::Cancelled);
-                    event_loop.exit();
-                }
-                Key::Named(NamedKey::Enter) => {
-                    self.finish_selection();
-                    event_loop.exit();
-                }
-                _ => {}
-            },
+                            // Draw darkened regions around selection
+                            // Top
+                            if sel_top > 0 {
+                                let r = RECT {
+                                    left: 0,
+                                    top: 0,
+                                    right: width,
+                                    bottom: sel_top,
+                                };
+                                darken_rect(hdc_temp, &r);
+                            }
+                            // Bottom
+                            if sel_bottom < height {
+                                let r = RECT {
+                                    left: 0,
+                                    top: sel_bottom,
+                                    right: width,
+                                    bottom: height,
+                                };
+                                darken_rect(hdc_temp, &r);
+                            }
+                            // Left
+                            let r = RECT {
+                                left: 0,
+                                top: sel_top,
+                                right: sel_left,
+                                bottom: sel_bottom,
+                            };
+                            darken_rect(hdc_temp, &r);
+                            // Right
+                            let r = RECT {
+                                left: sel_right,
+                                top: sel_top,
+                                right: width,
+                                bottom: sel_bottom,
+                            };
+                            darken_rect(hdc_temp, &r);
 
-            WindowEvent::MouseInput { state, button, .. } => {
-                if button == MouseButton::Left {
-                    match state {
-                        ElementState::Pressed => {
-                            self.is_selecting = true;
-                            // start_pos will be set on next cursor move
+                            // Draw selection border
+                            let border_brush = CreateSolidBrush(
+                                windows::Win32::Foundation::COLORREF(0x004080FF),
+                            );
+                            let border = RECT {
+                                left: sel_left - 2,
+                                top: sel_top - 2,
+                                right: sel_right + 2,
+                                bottom: sel_top,
+                            };
+                            FillRect(hdc_temp, &border, border_brush);
+                            let border = RECT {
+                                left: sel_left - 2,
+                                top: sel_bottom,
+                                right: sel_right + 2,
+                                bottom: sel_bottom + 2,
+                            };
+                            FillRect(hdc_temp, &border, border_brush);
+                            let border = RECT {
+                                left: sel_left - 2,
+                                top: sel_top,
+                                right: sel_left,
+                                bottom: sel_bottom,
+                            };
+                            FillRect(hdc_temp, &border, border_brush);
+                            let border = RECT {
+                                left: sel_right,
+                                top: sel_top,
+                                right: sel_right + 2,
+                                bottom: sel_bottom,
+                            };
+                            FillRect(hdc_temp, &border, border_brush);
+                            DeleteObject(border_brush);
+                        } else {
+                            // No selection - darken entire image
+                            let r = RECT {
+                                left: 0,
+                                top: 0,
+                                right: width,
+                                bottom: height,
+                            };
+                            darken_rect(hdc_temp, &r);
                         }
-                        ElementState::Released => {
-                            if self.is_selecting {
-                                self.is_selecting = false;
-                                self.finish_selection();
-                                event_loop.exit();
+
+                        DeleteObject(dark_brush);
+
+                        // Copy to screen
+                        BitBlt(hdc, 0, 0, width, height, hdc_temp, 0, 0, SRCCOPY);
+
+                        DeleteDC(hdc_temp);
+                        DeleteObject(hbm_temp);
+                    }
+                });
+
+                EndPaint(hwnd, &ps);
+                LRESULT(0)
+            }
+
+            WM_LBUTTONDOWN => {
+                let x = (lparam.0 & 0xFFFF) as i16 as i32;
+                let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+
+                OVERLAY_STATE.with(|state| {
+                    if let Some(ref mut state) = *state.borrow_mut() {
+                        state.is_selecting = true;
+                        state.start_x = x;
+                        state.start_y = y;
+                        state.current_x = x;
+                        state.current_y = y;
+                    }
+                });
+
+                LRESULT(0)
+            }
+
+            WM_MOUSEMOVE => {
+                let x = (lparam.0 & 0xFFFF) as i16 as i32;
+                let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+
+                OVERLAY_STATE.with(|state| {
+                    if let Some(ref mut state) = *state.borrow_mut() {
+                        if state.is_selecting {
+                            state.current_x = x;
+                            state.current_y = y;
+                            InvalidateRect(hwnd, None, false);
+                        }
+                    }
+                });
+
+                LRESULT(0)
+            }
+
+            WM_LBUTTONUP => {
+                OVERLAY_STATE.with(|state| {
+                    if let Some(ref mut state) = *state.borrow_mut() {
+                        if state.is_selecting {
+                            state.is_selecting = false;
+
+                            let sel_left = state.start_x.min(state.current_x);
+                            let sel_top = state.start_y.min(state.current_y);
+                            let sel_right = state.start_x.max(state.current_x);
+                            let sel_bottom = state.start_y.max(state.current_y);
+
+                            let sel_width = (sel_right - sel_left) as u32;
+                            let sel_height = (sel_bottom - sel_top) as u32;
+
+                            if sel_width > 10 && sel_height > 10 {
+                                // Get window dimensions for scaling
+                                let mut rect = RECT::default();
+                                GetClientRect(hwnd, &mut rect);
+                                let win_width = (rect.right - rect.left) as f64;
+                                let win_height = (rect.bottom - rect.top) as f64;
+
+                                // Scale to original screenshot coordinates
+                                let scale_x = state.screenshot.width as f64 / win_width;
+                                let scale_y = state.screenshot.height as f64 / win_height;
+
+                                let region = CaptureRegion {
+                                    x: (sel_left as f64 * scale_x) as i32,
+                                    y: (sel_top as f64 * scale_y) as i32,
+                                    width: (sel_width as f64 * scale_x) as u32,
+                                    height: (sel_height as f64 * scale_y) as u32,
+                                };
+
+                                state.result = Some(RegionSelectionResult::Selected(region));
+                                DestroyWindow(hwnd);
                             }
                         }
                     }
-                }
+                });
+
+                LRESULT(0)
             }
 
-            WindowEvent::CursorMoved { position, .. } => {
-                let x = position.x as i32;
-                let y = position.y as i32;
-
-                if self.is_selecting {
-                    if self.start_pos.is_none() {
-                        self.start_pos = Some((x, y));
+            WM_KEYDOWN => {
+                match wparam.0 {
+                    VK_ESCAPE => {
+                        OVERLAY_STATE.with(|state| {
+                            if let Some(ref mut state) = *state.borrow_mut() {
+                                state.result = Some(RegionSelectionResult::Cancelled);
+                            }
+                        });
+                        DestroyWindow(hwnd);
                     }
-                    self.current_pos = Some((x, y));
+                    VK_RETURN => {
+                        // Confirm current selection
+                        OVERLAY_STATE.with(|state| {
+                            if let Some(ref mut state) = *state.borrow_mut() {
+                                let sel_left = state.start_x.min(state.current_x);
+                                let sel_top = state.start_y.min(state.current_y);
+                                let sel_right = state.start_x.max(state.current_x);
+                                let sel_bottom = state.start_y.max(state.current_y);
 
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
+                                let sel_width = (sel_right - sel_left) as u32;
+                                let sel_height = (sel_bottom - sel_top) as u32;
+
+                                if sel_width > 10 && sel_height > 10 {
+                                    let mut rect = RECT::default();
+                                    GetClientRect(hwnd, &mut rect);
+                                    let win_width = (rect.right - rect.left) as f64;
+                                    let win_height = (rect.bottom - rect.top) as f64;
+
+                                    let scale_x = state.screenshot.width as f64 / win_width;
+                                    let scale_y = state.screenshot.height as f64 / win_height;
+
+                                    let region = CaptureRegion {
+                                        x: (sel_left as f64 * scale_x) as i32,
+                                        y: (sel_top as f64 * scale_y) as i32,
+                                        width: (sel_width as f64 * scale_x) as u32,
+                                        height: (sel_height as f64 * scale_y) as u32,
+                                    };
+
+                                    state.result = Some(RegionSelectionResult::Selected(region));
+                                    DestroyWindow(hwnd);
+                                }
+                            }
+                        });
                     }
+                    _ => {}
                 }
+                LRESULT(0)
             }
 
-            WindowEvent::RedrawRequested => {
-                self.render();
+            WM_DESTROY => {
+                PostQuitMessage(0);
+                LRESULT(0)
             }
 
-            _ => {}
+            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
+    }
+
+    /// Darken a rectangle by drawing a semi-transparent overlay
+    unsafe fn darken_rect(hdc: HDC, rect: &RECT) {
+        // Since we can't easily do alpha blending with GDI,
+        // we'll just draw a dark solid color for now
+        let dark_brush = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00000000));
+
+        // Create a pattern that gives appearance of darkening
+        // by drawing every other pixel
+        for y in rect.top..rect.bottom {
+            for x in rect.left..rect.right {
+                if (x + y) % 2 == 0 {
+                    windows::Win32::Graphics::Gdi::SetPixel(
+                        hdc,
+                        x,
+                        y,
+                        windows::Win32::Foundation::COLORREF(0x00000000),
+                    );
+                }
+            }
+        }
+
+        DeleteObject(dark_brush);
     }
 }
 
-/// Run the region selection overlay
+#[cfg(windows)]
+pub use windows_impl::select_region;
+
+#[cfg(not(windows))]
 pub fn select_region(
-    screenshot: Screenshot,
-    window_info: WindowInfo,
+    _screenshot: Screenshot,
+    _window_info: WindowInfo,
 ) -> Result<RegionSelectionResult, Box<dyn std::error::Error>> {
-    let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(ControlFlow::Wait);
-
-    let mut selector = RegionSelector::new(screenshot, window_info);
-
-    event_loop.run_app(&mut selector)?;
-
-    Ok(selector.result.unwrap_or(RegionSelectionResult::Cancelled))
+    Err("Region selection is only supported on Windows".into())
 }

@@ -14,17 +14,17 @@ use std::sync::{
 /// Duration options for audio buffers
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BufferDuration {
+    Seconds5,
     Seconds10,
-    Seconds30,
-    Seconds60,
+    Seconds15,
 }
 
 impl BufferDuration {
     pub fn as_secs(&self) -> usize {
         match self {
+            BufferDuration::Seconds5 => 5,
             BufferDuration::Seconds10 => 10,
-            BufferDuration::Seconds30 => 30,
-            BufferDuration::Seconds60 => 60,
+            BufferDuration::Seconds15 => 15,
         }
     }
 }

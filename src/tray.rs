@@ -6,9 +6,9 @@ use tray_icon::{
 };
 
 /// Menu item IDs
+pub const MENU_SAVE_5S: &str = "save_5s";
 pub const MENU_SAVE_10S: &str = "save_10s";
-pub const MENU_SAVE_30S: &str = "save_30s";
-pub const MENU_SAVE_60S: &str = "save_60s";
+pub const MENU_SAVE_15S: &str = "save_15s";
 pub const MENU_PAUSE: &str = "pause";
 pub const MENU_OPEN_FOLDER: &str = "open_folder";
 pub const MENU_SETTINGS: &str = "settings";
@@ -23,40 +23,40 @@ pub struct TrayManager {
 impl TrayManager {
     /// Create the system tray icon and menu
     pub fn new(
+        enable_5s: bool,
         enable_10s: bool,
-        enable_30s: bool,
-        enable_60s: bool,
+        enable_15s: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Create menu items
+        let menu_save_5s = MenuItem::with_id(
+            MENU_SAVE_5S,
+            "Save Last 5 seconds\tCtrl+Alt+1",
+            enable_5s,
+            None,
+        );
         let menu_save_10s = MenuItem::with_id(
             MENU_SAVE_10S,
-            "Save Last 10 seconds\tCtrl+Alt+1",
+            "Save Last 10 seconds\tCtrl+Alt+2",
             enable_10s,
             None,
         );
-        let menu_save_30s = MenuItem::with_id(
-            MENU_SAVE_30S,
-            "Save Last 30 seconds\tCtrl+Alt+2",
-            enable_30s,
+        let menu_save_15s = MenuItem::with_id(
+            MENU_SAVE_15S,
+            "Save Last 15 seconds\tCtrl+Alt+3",
+            enable_15s,
             None,
         );
-        let menu_save_60s = MenuItem::with_id(
-            MENU_SAVE_60S,
-            "Save Last 60 seconds\tCtrl+Alt+3",
-            enable_60s,
-            None,
-        );
-        let menu_pause = MenuItem::with_id(MENU_PAUSE, "⏸ Pause Recording", true, None);
+        let menu_pause = MenuItem::with_id(MENU_PAUSE, "Pause Recording", true, None);
         let menu_open_folder =
-            MenuItem::with_id(MENU_OPEN_FOLDER, "📁 Open Save Folder", true, None);
-        let menu_settings = MenuItem::with_id(MENU_SETTINGS, "⚙️ Settings...", true, None);
-        let menu_quit = MenuItem::with_id(MENU_QUIT, "🚪 Quit", true, None);
+            MenuItem::with_id(MENU_OPEN_FOLDER, "Open Save Folder", true, None);
+        let menu_settings = MenuItem::with_id(MENU_SETTINGS, "Settings...", true, None);
+        let menu_quit = MenuItem::with_id(MENU_QUIT, "Quit", true, None);
 
         // Build the menu
         let menu = Menu::new();
+        menu.append(&menu_save_5s)?;
         menu.append(&menu_save_10s)?;
-        menu.append(&menu_save_30s)?;
-        menu.append(&menu_save_60s)?;
+        menu.append(&menu_save_15s)?;
         menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&menu_pause)?;
         menu.append(&menu_open_folder)?;
