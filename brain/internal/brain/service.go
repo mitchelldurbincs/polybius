@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/mitchelldurbin/polybius/brain/internal/fsrs"
 	"github.com/mitchelldurbin/polybius/brain/internal/storage"
@@ -152,15 +151,14 @@ func (s *Service) handleNewCapture(jsonPath string) {
 			TimesSeen:  1,
 		})
 
-		// Create review card
-		now := time.Now()
+		// Create draft card (requires triage before entering review queue)
 		card := &storage.Card{
 			MomentID:         momentID,
 			TargetWord:       unknownWord,
 			TargetPinyin:     pinyin,
 			TargetDefinition: definition,
-			State:            "new",
-			DueDate:          &now,
+			State:            "draft",
+			DueDate:          nil, // No due date until approved
 		}
 
 		if _, err := s.db.InsertCard(card); err != nil {

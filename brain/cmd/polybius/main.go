@@ -76,10 +76,33 @@ func runGym() {
 	}
 	defer db.Close()
 
+	// Check for drafts first - show triage if any exist
+	draftCount, _ := db.CountDraftCards()
+	if draftCount > 0 {
+		triageModel := gym.NewTriageModel(db)
+		p := tea.NewProgram(triageModel)
+
+		finalModel, err := p.Run()
+		if err != nil {
+			log.Fatalf("Error running triage: %v", err)
+		}
+
+		// Check if user wants to continue to review
+		if tm, ok := finalModel.(gym.TriageModel); ok && !tm.StartReview() {
+			return // User quit without wanting review
+		}
+	}
+
+	// Start review session
 	session := gym.NewSession(db)
 	cards, err := session.GetDueCards(20)
 	if err != nil {
 		log.Fatalf("Failed to get cards: %v", err)
+	}
+
+	if len(cards) == 0 {
+		fmt.Println("No cards due for review. Great job!")
+		return
 	}
 
 	// Create rating callback

@@ -234,3 +234,112 @@ func (db *DB) UpdateCardAfterReview(id int64, update CardUpdate) error {
 	)
 	return err
 }
+
+// Draft/Triage methods
+
+func (db *DB) CountDraftCards() (int, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM cards WHERE state = 'draft'`).Scan(&count)
+	return count, err
+}
+
+func (db *DB) GetDraftMoments() ([]*Moment, error) {
+	rows, err := db.Query(`
+		SELECT DISTINCT m.id, m.timestamp, m.audio_file, m.screenshot_file, m.raw_text,
+		       m.segmented_json, m.i1_score, m.status, m.created_at
+		FROM moments m
+		INNER JOIN cards c ON c.moment_id = m.id
+		WHERE c.state = 'draft'
+		ORDER BY m.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var moments []*Moment
+	for rows.Next() {
+		m := &Moment{}
+		var segJSON sql.NullString
+		var screenshot sql.NullString
+		var rawText sql.NullString
+		var i1Score sql.NullFloat64
+		var createdAt string
+
+		err := rows.Scan(&m.ID, &m.Timestamp, &m.AudioFile, &screenshot, &rawText,
+			&segJSON, &i1Score, &m.Status, &createdAt)
+		if err != nil {
+			return nil, err
+		}
+
+		m.ScreenshotFile = screenshot.String
+		m.RawText = rawText.String
+		m.I1Score = i1Score.Float64
+		m.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+
+		if segJSON.Valid {
+			json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
+		}
+
+		moments = append(moments, m)
+	}
+	return moments, nil
+}
+
+func (db *DB) GetDraftCardsByMoment(momentID int64) ([]*Card, error) {
+	rows, err := db.Query(`
+		SELECT id, moment_id, target_word, target_pinyin, target_definition,
+		       stability, difficulty, due_date, last_review, reps, lapses, state
+		FROM cards
+		WHERE moment_id = ? AND state = 'draft'`, momentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []*Card
+	for rows.Next() {
+		c := &Card{}
+		var dueDate, lastReview sql.NullString
+		err := rows.Scan(&c.ID, &c.MomentID, &c.TargetWord, &c.TargetPinyin, &c.TargetDefinition,
+			&c.Stability, &c.Difficulty, &dueDate, &lastReview, &c.Reps, &c.Lapses, &c.State)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, nil
+}
+
+func (db *DB) ApproveCard(cardID int64) error {
+	now := time.Now().Format(time.RFC3339)
+	_, err := db.Exec(`
+		UPDATE cards
+		SET state = 'new', due_date = ?
+		WHERE id = ? AND state = 'draft'`, now, cardID)
+	return err
+}
+
+func (db *DB) ApproveMoment(momentID int64) error {
+	now := time.Now().Format(time.RFC3339)
+	_, err := db.Exec(`
+		UPDATE cards
+		SET state = 'new', due_date = ?
+		WHERE moment_id = ? AND state = 'draft'`, now, momentID)
+	return err
+}
+
+func (db *DB) DeleteCard(cardID int64) error {
+	_, err := db.Exec(`DELETE FROM cards WHERE id = ?`, cardID)
+	return err
+}
+
+func (db *DB) DeleteMoment(momentID int64) error {
+	// Delete cards first
+	_, err := db.Exec(`DELETE FROM cards WHERE moment_id = ?`, momentID)
+	if err != nil {
+		return err
+	}
+	// Then delete moment
+	_, err = db.Exec(`DELETE FROM moments WHERE id = ?`, momentID)
+	return err
+}
