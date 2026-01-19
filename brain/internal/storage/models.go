@@ -180,3 +180,57 @@ func (db *DB) IsWordKnown(word string) bool {
 	}
 	return status == "known"
 }
+
+func (db *DB) GetCard(id int64) (*Card, error) {
+	c := &Card{}
+	var dueDate, lastReview sql.NullString
+
+	err := db.QueryRow(`
+		SELECT id, moment_id, target_word, target_pinyin, target_definition,
+		       stability, difficulty, due_date, last_review, reps, lapses, state
+		FROM cards WHERE id = ?`, id).Scan(
+		&c.ID, &c.MomentID, &c.TargetWord, &c.TargetPinyin, &c.TargetDefinition,
+		&c.Stability, &c.Difficulty, &dueDate, &lastReview, &c.Reps, &c.Lapses, &c.State,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if dueDate.Valid {
+		t, _ := time.Parse(time.RFC3339, dueDate.String)
+		c.DueDate = &t
+	}
+	if lastReview.Valid {
+		t, _ := time.Parse(time.RFC3339, lastReview.String)
+		c.LastReview = &t
+	}
+
+	return c, nil
+}
+
+type CardUpdate struct {
+	Stability  float64
+	Difficulty float64
+	Reps       int
+	Lapses     int
+	State      string
+	DueDate    time.Time
+	LastReview time.Time
+}
+
+func (db *DB) UpdateCardAfterReview(id int64, update CardUpdate) error {
+	_, err := db.Exec(`
+		UPDATE cards SET
+			stability = ?,
+			difficulty = ?,
+			reps = ?,
+			lapses = ?,
+			state = ?,
+			due_date = ?,
+			last_review = ?
+		WHERE id = ?`,
+		update.Stability, update.Difficulty, update.Reps, update.Lapses,
+		update.State, update.DueDate.Format(time.RFC3339), update.LastReview.Format(time.RFC3339), id,
+	)
+	return err
+}

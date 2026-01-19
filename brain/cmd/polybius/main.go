@@ -9,7 +9,10 @@ import (
 	"path/filepath"
 	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mitchelldurbin/polybius/brain/internal/brain"
+	"github.com/mitchelldurbin/polybius/brain/internal/gym"
+	"github.com/mitchelldurbin/polybius/brain/internal/storage"
 )
 
 func main() {
@@ -64,6 +67,30 @@ func runBrain() {
 }
 
 func runGym() {
-	fmt.Println("The Gym - Coming soon!")
-	// TODO: Implement TUI
+	homeDir, _ := os.UserHomeDir()
+	dbPath := filepath.Join(homeDir, ".polybius", "brain.db")
+
+	db, err := storage.OpenDatabase(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	session := gym.NewSession(db)
+	cards, err := session.GetDueCards(20)
+	if err != nil {
+		log.Fatalf("Failed to get cards: %v", err)
+	}
+
+	// Create rating callback
+	onRate := func(cardID int64, rating int) error {
+		return session.SubmitRating(cardID, rating)
+	}
+
+	model := gym.NewModel(cards, onRate)
+	p := tea.NewProgram(model)
+
+	if _, err := p.Run(); err != nil {
+		log.Fatalf("Error running TUI: %v", err)
+	}
 }
