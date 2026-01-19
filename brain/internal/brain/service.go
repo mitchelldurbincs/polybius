@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mitchelldurbin/polybius/brain/internal/fsrs"
 	"github.com/mitchelldurbin/polybius/brain/internal/storage"
@@ -67,6 +68,9 @@ func (s *Service) DB() *storage.DB {
 }
 
 func (s *Service) handleNewCapture(jsonPath string) {
+	// Wait for file to be fully written (race condition with Miner)
+	time.Sleep(200 * time.Millisecond)
+
 	log.Printf("New capture detected: %s", jsonPath)
 
 	// Read metadata JSON

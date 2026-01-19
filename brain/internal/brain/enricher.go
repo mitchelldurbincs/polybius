@@ -2,8 +2,20 @@
 package brain
 
 import (
+	"unicode"
+
 	"github.com/mitchelldurbin/polybius/brain/internal/nlp"
 )
+
+// containsChinese returns true if the string contains at least one Chinese character
+func containsChinese(s string) bool {
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) {
+			return true
+		}
+	}
+	return false
+}
 
 type EnrichedWord struct {
 	Word       string
@@ -43,6 +55,11 @@ func (e *Enricher) Enrich(text string) *EnrichedText {
 
 	var enriched []EnrichedWord
 	for _, word := range words {
+		// Skip non-Chinese words (English, punctuation, etc.)
+		if !containsChinese(word) {
+			continue
+		}
+
 		ew := EnrichedWord{Word: word}
 
 		if entry, ok := e.dict.LookupWithFallback(word); ok {
