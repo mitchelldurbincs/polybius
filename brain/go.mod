@@ -3,6 +3,7 @@ module github.com/mitchelldurbin/polybius/brain
 go 1.24.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/bubbles v0.21.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
