@@ -9,7 +9,11 @@
       "Bash(git commit:*)",
       "Skill(superpowers:writing-plans)",
       "Bash(cargo check:*)",
-      "Bash(git -C \"C:/Users/mitchell.durbin/source/repos/polybius/.worktrees/contextual-srs\" log --oneline -20)"
+      "Bash(git -C \"C:/Users/mitchell.durbin/source/repos/polybius/.worktrees/contextual-srs\" log --oneline -20)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(cat:*)",
+      "Bash(go test:*)"
     ]
   }
 }

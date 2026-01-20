@@ -8,27 +8,40 @@ import (
 	"github.com/mitchelldurbin/polybius/brain/internal/storage"
 )
 
+// CardStore abstracts database operations for review sessions
+type CardStore interface {
+	GetDueCards(limit int) ([]*storage.Card, error)
+	GetMoment(id int64) (*storage.Moment, error)
+	GetCard(id int64) (*storage.Card, error)
+	UpdateCardAfterReview(id int64, update storage.CardUpdate) error
+}
+
+// ReviewScheduler abstracts spaced repetition calculations
+type ReviewScheduler interface {
+	Review(state fsrs.CardState, rating int, now time.Time) (fsrs.CardState, time.Time)
+}
+
 type Session struct {
-	db        *storage.DB
-	scheduler *fsrs.Scheduler
+	store     CardStore
+	scheduler ReviewScheduler
 }
 
 func NewSession(db *storage.DB) *Session {
 	return &Session{
-		db:        db,
+		store:     db,
 		scheduler: fsrs.NewScheduler(),
 	}
 }
 
 func (s *Session) GetDueCards(limit int) ([]*ReviewCard, error) {
-	cards, err := s.db.GetDueCards(limit)
+	cards, err := s.store.GetDueCards(limit)
 	if err != nil {
 		return nil, err
 	}
 
 	var reviewCards []*ReviewCard
 	for _, c := range cards {
-		moment, err := s.db.GetMoment(c.MomentID)
+		moment, err := s.store.GetMoment(c.MomentID)
 		if err != nil {
 			continue
 		}
@@ -49,7 +62,7 @@ func (s *Session) GetDueCards(limit int) ([]*ReviewCard, error) {
 
 func (s *Session) SubmitRating(cardID int64, rating int) error {
 	// Get current card state from database
-	card, err := s.db.GetCard(cardID)
+	card, err := s.store.GetCard(cardID)
 	if err != nil {
 		return err
 	}
@@ -71,7 +84,7 @@ func (s *Session) SubmitRating(cardID int64, rating int) error {
 	newState, nextDue := s.scheduler.Review(state, rating, now)
 
 	// Update card in database
-	return s.db.UpdateCardAfterReview(cardID, storage.CardUpdate{
+	return s.store.UpdateCardAfterReview(cardID, storage.CardUpdate{
 		Stability:  newState.Stability,
 		Difficulty: newState.Difficulty,
 		Reps:       newState.Reps,
