@@ -14,8 +14,9 @@ The Brain is a Go service that processes captures from the Miner and manages spa
 The Brain is invoked via `brain/cmd/polybius/main.go`:
 
 ```bash
-polybius brain   # Start the file watcher service
-polybius gym     # Start the TUI review interface
+polybius brain                    # Start the file watcher service
+polybius gym                      # Start the TUI review interface
+polybius vocab import <file.tsv>  # Import known vocabulary from Skritter
 ```
 
 ## Core Components
@@ -111,6 +112,25 @@ SQLite database with four main tables:
 | `cards` | Flashcards with FSRS state and scheduling |
 | `vocabulary` | User's known/unknown words |
 | `reviews` | Review history audit trail |
+
+### Vocabulary Import (`brain/internal/vocab/`)
+
+Imports known vocabulary from external sources to prevent card creation for words you've already learned.
+
+**Supported Format:** Skritter TSV export (tab-separated: simplified, traditional, pinyin, definition)
+
+```bash
+polybius vocab import skritter-export.tsv
+```
+
+**Behavior:**
+- Reads simplified Chinese column only (ignores traditional)
+- Marks all imported words as `status = "known"` in the vocabulary table
+- Skips words already marked as known
+- Verbose output shows each word as it's imported (`+` = new, `=` = already known)
+
+**Why This Matters:**
+When the Brain processes new captures, it checks `IsWordKnown()` for each segmented word. Known words are skipped during card creation, so you won't get flashcards for vocabulary you've already mastered in other tools.
 
 ## Data Flow
 
@@ -208,6 +228,7 @@ draft --> new --> learning --> review <--> relearning
 | `brain/internal/storage/db.go` | Database operations |
 | `brain/internal/storage/models.go` | Data models |
 | `brain/internal/gym/review.go` | Review session logic |
+| `brain/internal/vocab/import.go` | Vocabulary import from Skritter TSV |
 
 ## Configuration
 
