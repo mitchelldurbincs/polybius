@@ -90,7 +90,7 @@ func (m Model) Init() tea.Cmd {
 			m.imageWin.Show(card.ImageFile)
 		}
 		if card.AudioFile != "" {
-			m.audioPlayer.PlayAsync(card.AudioFile)
+			m.audioPlayer.Play(card.AudioFile)
 		}
 	}
 	return nil
@@ -101,6 +101,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.audioPlayer.Close()
 			m.quitting = true
 			return m, tea.Quit
 
@@ -140,7 +141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.imageWin.Show(nextCard.ImageFile)
 					}
 					if nextCard.AudioFile != "" {
-						m.audioPlayer.PlayAsync(nextCard.AudioFile)
+						m.audioPlayer.Play(nextCard.AudioFile)
 					}
 				}
 
@@ -155,7 +156,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentIdx < len(m.cards) {
 				card := m.cards[m.currentIdx]
 				if card.AudioFile != "" {
-					m.audioPlayer.PlayAsync(card.AudioFile)
+					m.audioPlayer.Play(card.AudioFile)
 				}
 			}
 			return m, nil
@@ -186,7 +187,11 @@ func (m Model) View() string {
 	case StateAudioOnly:
 		// Only show that audio is playing, no text - train listening!
 		content.WriteString("Listen to the audio...\n\n")
-		content.WriteString("Audio: [Playing...]\n\n")
+		if m.audioPlayer.HasError() {
+			content.WriteString("Audio: [Unavailable]\n\n")
+		} else {
+			content.WriteString("Audio: [Playing...]\n\n")
+		}
 		content.WriteString(hiddenStyle.Render("[Press Space to reveal what was said]"))
 
 	case StateHanziRevealed:
