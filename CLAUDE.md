@@ -43,6 +43,14 @@ go test ./internal/nlp -run TestSegmenter
 go test ./internal/fsrs -run TestScheduler
 ```
 
+### Vocabulary Management
+```bash
+# Import known vocabulary from Skritter TSV export
+polybius vocab import skritter-export.tsv
+```
+
+Imported words are marked as "known" in the database, preventing card creation for words you've already learned elsewhere.
+
 ## Architecture
 
 ### Data Flow
@@ -67,6 +75,7 @@ Gym (TUI) → Triage drafts → Review with FSRS scheduling
 - `fsrs/` - FSRS-6 spaced repetition scheduling
 - `storage/` - SQLite operations, Card/Moment/Vocabulary models
 - `gym/` - Bubbletea TUI: triage mode, review mode, audio playback
+- `vocab/` - Vocabulary import from external sources (Skritter TSV)
 
 ### Key Data Models
 - **Moment** - Captured artifact (audio, screenshot, OCR text, segmented words, i+1 score)
