@@ -13,11 +13,12 @@ import (
 	"github.com/mitchelldurbin/polybius/brain/internal/brain"
 	"github.com/mitchelldurbin/polybius/brain/internal/gym"
 	"github.com/mitchelldurbin/polybius/brain/internal/storage"
+	"github.com/mitchelldurbin/polybius/brain/internal/vocab"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: polybius <brain|gym>")
+		fmt.Println("Usage: polybius <brain|gym|vocab>")
 		os.Exit(1)
 	}
 
@@ -26,6 +27,8 @@ func main() {
 		runBrain()
 	case "gym":
 		runGym()
+	case "vocab":
+		runVocab()
 	default:
 		fmt.Printf("Unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -116,4 +119,48 @@ func runGym() {
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("Error running TUI: %v", err)
 	}
+}
+
+func runVocab() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: polybius vocab <import> [args]")
+		os.Exit(1)
+	}
+
+	switch os.Args[2] {
+	case "import":
+		runVocabImport()
+	default:
+		fmt.Printf("Unknown vocab command: %s\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func runVocabImport() {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: polybius vocab import <file.tsv>")
+		os.Exit(1)
+	}
+
+	filePath := os.Args[3]
+
+	homeDir, _ := os.UserHomeDir()
+	dbPath := filepath.Join(homeDir, ".polybius", "brain.db")
+
+	// Ensure directory exists
+	os.MkdirAll(filepath.Dir(dbPath), 0755)
+
+	db, err := storage.OpenDatabase(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	result, err := vocab.ImportTSV(db, filePath)
+	if err != nil {
+		log.Fatalf("Import failed: %v", err)
+	}
+
+	fmt.Printf("\nImported %d words (%d new, %d already known)\n",
+		result.Added+result.Skipped, result.Added, result.Skipped)
 }
