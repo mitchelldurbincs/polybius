@@ -152,3 +152,56 @@ cedict_path = "/from/file.u8"
 		t.Errorf("CEDICTPath = %q, want %q", cfg.CEDICTPath, "/from/env.u8")
 	}
 }
+
+func TestTildeExpansion(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set HOME for Unix or USERPROFILE for Windows
+	if runtime.GOOS == "windows" {
+		originalUserProfile := os.Getenv("USERPROFILE")
+		os.Setenv("USERPROFILE", tmpDir)
+		defer os.Setenv("USERPROFILE", originalUserProfile)
+	} else {
+		originalHome := os.Getenv("HOME")
+		os.Setenv("HOME", tmpDir)
+		defer os.Setenv("HOME", originalHome)
+	}
+
+	// Clear env overrides
+	os.Unsetenv("POLYBIUS_MINER_DIR")
+	os.Unsetenv("POLYBIUS_DB")
+	os.Unsetenv("POLYBIUS_CEDICT")
+
+	// Create config with tilde paths
+	configDir := filepath.Join(tmpDir, ".polybius")
+	os.MkdirAll(configDir, 0755)
+
+	configContent := `
+miner_dir = "~/custom/miner"
+db_path = "~/.custom/brain.db"
+cedict_path = "~/dict/cedict.u8"
+`
+	configPath := filepath.Join(configDir, "config.toml")
+	os.WriteFile(configPath, []byte(configContent), 0644)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Tildes should be expanded to actual home dir
+	expectedMinerDir := filepath.Join(tmpDir, "custom", "miner")
+	if cfg.MinerDir != expectedMinerDir {
+		t.Errorf("MinerDir = %q, want %q", cfg.MinerDir, expectedMinerDir)
+	}
+
+	expectedDBPath := filepath.Join(tmpDir, ".custom", "brain.db")
+	if cfg.DBPath != expectedDBPath {
+		t.Errorf("DBPath = %q, want %q", cfg.DBPath, expectedDBPath)
+	}
+
+	expectedCEDICTPath := filepath.Join(tmpDir, "dict", "cedict.u8")
+	if cfg.CEDICTPath != expectedCEDICTPath {
+		t.Errorf("CEDICTPath = %q, want %q", cfg.CEDICTPath, expectedCEDICTPath)
+	}
+}

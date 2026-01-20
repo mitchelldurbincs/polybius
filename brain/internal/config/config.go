@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -62,5 +63,20 @@ func Load() (*Config, error) {
 		cfg.CEDICTPath = v
 	}
 
+	// Expand tildes in all paths
+	cfg.MinerDir = expandTilde(cfg.MinerDir)
+	cfg.DBPath = expandTilde(cfg.DBPath)
+	cfg.CEDICTPath = expandTilde(cfg.CEDICTPath)
+
 	return cfg, nil
+}
+
+// expandTilde expands ~ to the user's home directory.
+func expandTilde(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(homeDir, path[2:])
+		}
+	}
+	return path
 }
