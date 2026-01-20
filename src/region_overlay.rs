@@ -24,10 +24,9 @@ mod windows_impl {
     use windows::core::w;
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows::Win32::Graphics::Gdi::{
-        BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush,
-        DeleteDC, DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC,
-        SelectObject, SetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
-        PAINTSTRUCT, SRCCOPY,
+        BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
+        DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC, SelectObject,
+        SetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, PAINTSTRUCT, SRCCOPY,
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -50,7 +49,9 @@ mod windows_impl {
         current_y: i32,
         result: Option<RegionSelectionResult>,
         hdc_mem: HDC,
+        hdc_dark: HDC,
         hbm_screenshot: windows::Win32::Graphics::Gdi::HBITMAP,
+        hbm_darkened: windows::Win32::Graphics::Gdi::HBITMAP,
     }
 
     thread_local! {
@@ -81,26 +82,48 @@ mod windows_impl {
 
             RegisterClassW(&wc);
 
-            // Create memory DC and bitmap for the screenshot
+            // Create memory DCs and bitmaps for the screenshot (original + darkened)
             let hdc_screen = GetDC(None);
             let hdc_mem = CreateCompatibleDC(hdc_screen);
+            let hdc_dark = CreateCompatibleDC(hdc_screen);
             let hbm_screenshot = CreateCompatibleBitmap(
                 hdc_screen,
                 screenshot.width as i32,
                 screenshot.height as i32,
             );
+            let hbm_darkened = CreateCompatibleBitmap(
+                hdc_screen,
+                screenshot.width as i32,
+                screenshot.height as i32,
+            );
             SelectObject(hdc_mem, hbm_screenshot);
+            SelectObject(hdc_dark, hbm_darkened);
 
-            // Convert RGBA to BGR for Windows bitmap (bottom-up)
+            // Convert RGBA to BGR for Windows bitmap (bottom-up) - original
             let mut bgr_data: Vec<u8> =
                 Vec::with_capacity((screenshot.width * screenshot.height * 4) as usize);
+            // Also create darkened version (40% brightness)
+            let mut bgr_dark: Vec<u8> =
+                Vec::with_capacity((screenshot.width * screenshot.height * 4) as usize);
+
             for y in (0..screenshot.height).rev() {
                 for x in 0..screenshot.width {
                     let idx = ((y * screenshot.width + x) * 4) as usize;
-                    bgr_data.push(screenshot.data[idx + 2]); // B
-                    bgr_data.push(screenshot.data[idx + 1]); // G
-                    bgr_data.push(screenshot.data[idx]); // R
+                    let r = screenshot.data[idx];
+                    let g = screenshot.data[idx + 1];
+                    let b = screenshot.data[idx + 2];
+
+                    // Original
+                    bgr_data.push(b); // B
+                    bgr_data.push(g); // G
+                    bgr_data.push(r); // R
                     bgr_data.push(0); // Padding
+
+                    // Darkened (40% brightness)
+                    bgr_dark.push((b as u32 * 40 / 100) as u8);
+                    bgr_dark.push((g as u32 * 40 / 100) as u8);
+                    bgr_dark.push((r as u32 * 40 / 100) as u8);
+                    bgr_dark.push(0);
                 }
             }
 
@@ -127,6 +150,16 @@ mod windows_impl {
                 DIB_RGB_COLORS,
             );
 
+            SetDIBits(
+                hdc_dark,
+                hbm_darkened,
+                0,
+                screenshot.height,
+                bgr_dark.as_ptr() as *const _,
+                &bmi,
+                DIB_RGB_COLORS,
+            );
+
             ReleaseDC(None, hdc_screen);
 
             // Store state
@@ -141,7 +174,9 @@ mod windows_impl {
                     current_y: 0,
                     result: None,
                     hdc_mem,
+                    hdc_dark,
                     hbm_screenshot,
+                    hbm_darkened,
                 });
             });
 
@@ -172,7 +207,9 @@ mod windows_impl {
 
             // Cleanup
             DeleteDC(hdc_mem);
+            DeleteDC(hdc_dark);
             DeleteObject(hbm_screenshot);
+            DeleteObject(hbm_darkened);
 
             // Get result
             let result = OVERLAY_STATE.with(|state| {
@@ -202,83 +239,68 @@ mod windows_impl {
                     if let Some(ref state) = *state.borrow() {
                         let mut rect = RECT::default();
                         GetClientRect(hwnd, &mut rect);
-                        let width = rect.right - rect.left;
-                        let height = rect.bottom - rect.top;
+                        let win_width = rect.right - rect.left;
+                        let win_height = rect.bottom - rect.top;
+                        let img_width = state.screenshot.width as i32;
+                        let img_height = state.screenshot.height as i32;
 
                         // Create a temporary DC for compositing
                         let hdc_temp = CreateCompatibleDC(hdc);
-                        let hbm_temp = CreateCompatibleBitmap(hdc, width, height);
+                        let hbm_temp = CreateCompatibleBitmap(hdc, win_width, win_height);
                         SelectObject(hdc_temp, hbm_temp);
 
-                        // Draw screenshot scaled to window size
+                        // Start with darkened screenshot as base (fast StretchBlt)
                         windows::Win32::Graphics::Gdi::StretchBlt(
                             hdc_temp,
                             0,
                             0,
-                            width,
-                            height,
-                            state.hdc_mem,
+                            win_width,
+                            win_height,
+                            state.hdc_dark,
                             0,
                             0,
-                            state.screenshot.width as i32,
-                            state.screenshot.height as i32,
+                            img_width,
+                            img_height,
                             SRCCOPY,
                         );
 
-                        // Apply dark overlay to non-selected areas
-                        let dark_brush = CreateSolidBrush(
-                            windows::Win32::Foundation::COLORREF(0x00404040),
-                        );
-
-                        // If we have a selection, darken everything except the selection
+                        // If we have a selection, draw the bright region on top
                         if state.is_selecting || (state.start_x != state.current_x) {
                             let sel_left = state.start_x.min(state.current_x);
                             let sel_top = state.start_y.min(state.current_y);
                             let sel_right = state.start_x.max(state.current_x);
                             let sel_bottom = state.start_y.max(state.current_y);
+                            let sel_width = sel_right - sel_left;
+                            let sel_height = sel_bottom - sel_top;
 
-                            // Draw darkened regions around selection
-                            // Top
-                            if sel_top > 0 {
-                                let r = RECT {
-                                    left: 0,
-                                    top: 0,
-                                    right: width,
-                                    bottom: sel_top,
-                                };
-                                darken_rect(hdc_temp, &r);
-                            }
-                            // Bottom
-                            if sel_bottom < height {
-                                let r = RECT {
-                                    left: 0,
-                                    top: sel_bottom,
-                                    right: width,
-                                    bottom: height,
-                                };
-                                darken_rect(hdc_temp, &r);
-                            }
-                            // Left
-                            let r = RECT {
-                                left: 0,
-                                top: sel_top,
-                                right: sel_left,
-                                bottom: sel_bottom,
-                            };
-                            darken_rect(hdc_temp, &r);
-                            // Right
-                            let r = RECT {
-                                left: sel_right,
-                                top: sel_top,
-                                right: width,
-                                bottom: sel_bottom,
-                            };
-                            darken_rect(hdc_temp, &r);
+                            // Calculate source coordinates in original image
+                            let scale_x = img_width as f64 / win_width as f64;
+                            let scale_y = img_height as f64 / win_height as f64;
+                            let src_x = (sel_left as f64 * scale_x) as i32;
+                            let src_y = (sel_top as f64 * scale_y) as i32;
+                            let src_w = (sel_width as f64 * scale_x) as i32;
+                            let src_h = (sel_height as f64 * scale_y) as i32;
+
+                            // Draw bright (original) region on top of darkened base
+                            windows::Win32::Graphics::Gdi::StretchBlt(
+                                hdc_temp,
+                                sel_left,
+                                sel_top,
+                                sel_width,
+                                sel_height,
+                                state.hdc_mem,
+                                src_x,
+                                src_y,
+                                src_w,
+                                src_h,
+                                SRCCOPY,
+                            );
 
                             // Draw selection border
                             let border_brush = CreateSolidBrush(
-                                windows::Win32::Foundation::COLORREF(0x004080FF),
+                                windows::Win32::Foundation::COLORREF(0x00FF8040), // Orange-ish
                             );
+                            // Top border
                             let border = RECT {
                                 left: sel_left - 2,
                                 top: sel_top - 2,
@@ -286,6 +308,7 @@ mod windows_impl {
                                 bottom: sel_top,
                             };
                             FillRect(hdc_temp, &border, border_brush);
+                            // Bottom border
                             let border = RECT {
                                 left: sel_left - 2,
                                 top: sel_bottom,
@@ -293,6 +316,7 @@ mod windows_impl {
                                 bottom: sel_bottom + 2,
                             };
                             FillRect(hdc_temp, &border, border_brush);
+                            // Left border
                             let border = RECT {
                                 left: sel_left - 2,
                                 top: sel_top,
@@ -300,6 +324,7 @@ mod windows_impl {
                                 bottom: sel_bottom,
                             };
                             FillRect(hdc_temp, &border, border_brush);
+                            // Right border
                             let border = RECT {
                                 left: sel_right,
                                 top: sel_top,
@@ -308,21 +333,10 @@ mod windows_impl {
                             };
                             FillRect(hdc_temp, &border, border_brush);
                             DeleteObject(border_brush);
-                        } else {
-                            // No selection - darken entire image
-                            let r = RECT {
-                                left: 0,
-                                top: 0,
-                                right: width,
-                                bottom: height,
-                            };
-                            darken_rect(hdc_temp, &r);
                         }
 
-                        DeleteObject(dark_brush);
-
-                        // Copy to screen
-                        BitBlt(hdc, 0, 0, width, height, hdc_temp, 0, 0, SRCCOPY);
+                        // Copy composited result to screen
+                        BitBlt(hdc, 0, 0, win_width, win_height, hdc_temp, 0, 0, SRCCOPY);
 
                         DeleteDC(hdc_temp);
                         DeleteObject(hbm_temp);
@@ -465,30 +479,6 @@ mod windows_impl {
 
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
-    }
-
-    /// Darken a rectangle by drawing a semi-transparent overlay
-    unsafe fn darken_rect(hdc: HDC, rect: &RECT) {
-        // Since we can't easily do alpha blending with GDI,
-        // we'll just draw a dark solid color for now
-        let dark_brush = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00000000));
-
-        // Create a pattern that gives appearance of darkening
-        // by drawing every other pixel
-        for y in rect.top..rect.bottom {
-            for x in rect.left..rect.right {
-                if (x + y) % 2 == 0 {
-                    windows::Win32::Graphics::Gdi::SetPixel(
-                        hdc,
-                        x,
-                        y,
-                        windows::Win32::Foundation::COLORREF(0x00000000),
-                    );
-                }
-            }
-        }
-
-        DeleteObject(dark_brush);
     }
 }
 
