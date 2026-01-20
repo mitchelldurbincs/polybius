@@ -62,12 +62,10 @@ mod windows_impl {
             }
 
             // Allocate global memory
-            let hmem = GlobalAlloc(GMEM_MOVEABLE, total_size);
-            if hmem.is_err() {
+            let hmem = GlobalAlloc(GMEM_MOVEABLE, total_size).map_err(|_| {
                 CloseClipboard().ok();
-                return Err(ClipboardError::MemoryError("GlobalAlloc failed".to_string()));
-            }
-            let hmem = hmem.unwrap();
+                ClipboardError::MemoryError("GlobalAlloc failed".to_string())
+            })?;
 
             // Lock memory and write data
             let ptr = GlobalLock(hmem);

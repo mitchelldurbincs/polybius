@@ -9,12 +9,18 @@ use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
-/// Version of the metadata schema
+/// Version of the metadata schema (string for backwards compatibility)
 const METADATA_VERSION: &str = "1.0";
+
+/// Schema version as integer for programmatic version checking
+const SCHEMA_VERSION: u32 = 1;
 
 /// Complete card metadata combining audio, screenshot, and OCR
 #[derive(Debug, Serialize)]
 pub struct CardMetadata {
+    /// Schema version as integer for programmatic validation
+    pub schema_version: u32,
+    /// Human-readable version string
     pub version: String,
     pub timestamp: String,
     pub audio: AudioMetadata,
@@ -67,6 +73,7 @@ impl CardMetadata {
         let timestamp: DateTime<Utc> = Utc::now();
 
         Self {
+            schema_version: SCHEMA_VERSION,
             version: METADATA_VERSION.to_string(),
             timestamp: timestamp.to_rfc3339(),
             audio: AudioMetadata {

@@ -2,11 +2,20 @@
 package nlp
 
 import (
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
+// testDataPath returns the path to the test data directory
+func testDataPath(filename string) string {
+	_, currentFile, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(currentFile)
+	return filepath.Join(dir, "..", "..", "data", filename)
+}
+
 func TestCEDICTLookup(t *testing.T) {
-	dict, err := LoadCEDICT("../../data/cedict_ts.u8")
+	dict, err := LoadCEDICT(testDataPath("cedict_ts.u8"))
 	if err != nil {
 		t.Fatalf("Failed to load CEDICT: %v", err)
 	}
@@ -27,7 +36,7 @@ func TestCEDICTLookup(t *testing.T) {
 }
 
 func TestCEDICTCharacterFallback(t *testing.T) {
-	dict, err := LoadCEDICT("../../data/cedict_ts.u8")
+	dict, err := LoadCEDICT(testDataPath("cedict_ts.u8"))
 	if err != nil {
 		t.Fatalf("Failed to load CEDICT: %v", err)
 	}

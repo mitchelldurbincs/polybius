@@ -425,7 +425,7 @@ fn handle_region_select(config: &mut Config) -> Result<(), Box<dyn std::error::E
 fn generate_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs()
 }
 
