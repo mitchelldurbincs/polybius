@@ -13,7 +13,9 @@
       "Bash(go build:*)",
       "Bash(go vet:*)",
       "Bash(cat:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Skill(brainstorming)",
+      "Bash(./bin/polybius vocab import:*)"
     ]
   }
 }
