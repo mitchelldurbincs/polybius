@@ -51,5 +51,16 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Apply env var overrides (highest priority)
+	if v := os.Getenv("POLYBIUS_MINER_DIR"); v != "" {
+		cfg.MinerDir = v
+	}
+	if v := os.Getenv("POLYBIUS_DB"); v != "" {
+		cfg.DBPath = v
+	}
+	if v := os.Getenv("POLYBIUS_CEDICT"); v != "" {
+		cfg.CEDICTPath = v
+	}
+
 	return cfg, nil
 }

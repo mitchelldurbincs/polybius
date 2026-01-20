@@ -99,3 +99,56 @@ cedict_path = "/custom/cedict.u8"
 		t.Errorf("CEDICTPath = %q, want %q", cfg.CEDICTPath, "/custom/cedict.u8")
 	}
 }
+
+func TestEnvVarOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set HOME for Unix or USERPROFILE for Windows
+	if runtime.GOOS == "windows" {
+		originalUserProfile := os.Getenv("USERPROFILE")
+		os.Setenv("USERPROFILE", tmpDir)
+		defer os.Setenv("USERPROFILE", originalUserProfile)
+	} else {
+		originalHome := os.Getenv("HOME")
+		os.Setenv("HOME", tmpDir)
+		defer os.Setenv("HOME", originalHome)
+	}
+
+	// Create config file with values that will be overridden
+	configDir := filepath.Join(tmpDir, ".polybius")
+	os.MkdirAll(configDir, 0755)
+
+	configContent := `
+miner_dir = "/from/file"
+db_path = "/from/file.db"
+cedict_path = "/from/file.u8"
+`
+	configPath := filepath.Join(configDir, "config.toml")
+	os.WriteFile(configPath, []byte(configContent), 0644)
+
+	// Set env vars to override
+	os.Setenv("POLYBIUS_MINER_DIR", "/from/env")
+	os.Setenv("POLYBIUS_DB", "/from/env.db")
+	os.Setenv("POLYBIUS_CEDICT", "/from/env.u8")
+	defer func() {
+		os.Unsetenv("POLYBIUS_MINER_DIR")
+		os.Unsetenv("POLYBIUS_DB")
+		os.Unsetenv("POLYBIUS_CEDICT")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Env vars should win over file
+	if cfg.MinerDir != "/from/env" {
+		t.Errorf("MinerDir = %q, want %q", cfg.MinerDir, "/from/env")
+	}
+	if cfg.DBPath != "/from/env.db" {
+		t.Errorf("DBPath = %q, want %q", cfg.DBPath, "/from/env.db")
+	}
+	if cfg.CEDICTPath != "/from/env.u8" {
+		t.Errorf("CEDICTPath = %q, want %q", cfg.CEDICTPath, "/from/env.u8")
+	}
+}
