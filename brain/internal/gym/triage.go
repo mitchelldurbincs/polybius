@@ -3,6 +3,7 @@ package gym
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -68,6 +69,7 @@ func (m TriageModel) loadDrafts() tea.Msg {
 	for _, moment := range moments {
 		cards, err := m.db.GetDraftCardsByMoment(moment.ID)
 		if err != nil {
+			log.Printf("Warning: failed to load cards for moment %d: %v", moment.ID, err)
 			continue
 		}
 		momentsWithCards = append(momentsWithCards, &MomentWithCards{

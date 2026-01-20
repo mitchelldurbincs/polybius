@@ -67,9 +67,39 @@ func (s *Service) DB() *storage.DB {
 	return s.db
 }
 
+// waitForFileStable waits until a file's size stops changing, indicating the write is complete.
+// Returns an error if the file doesn't stabilize within maxWait.
+func waitForFileStable(path string, checkInterval, maxWait time.Duration) error {
+	deadline := time.Now().Add(maxWait)
+	var lastSize int64 = -1
+
+	for time.Now().Before(deadline) {
+		info, err := os.Stat(path)
+		if err != nil {
+			// File might not exist yet, keep waiting
+			time.Sleep(checkInterval)
+			continue
+		}
+
+		currentSize := info.Size()
+		if currentSize == lastSize && currentSize > 0 {
+			// Size hasn't changed and file has content - it's stable
+			return nil
+		}
+
+		lastSize = currentSize
+		time.Sleep(checkInterval)
+	}
+
+	return os.ErrDeadlineExceeded
+}
+
 func (s *Service) handleNewCapture(jsonPath string) {
-	// Wait for file to be fully written (race condition with Miner)
-	time.Sleep(200 * time.Millisecond)
+	// Wait for file to be fully written by polling file size
+	if err := waitForFileStable(jsonPath, 50*time.Millisecond, 5*time.Second); err != nil {
+		log.Printf("Timeout waiting for file to stabilize: %s", jsonPath)
+		return
+	}
 
 	log.Printf("New capture detected: %s", jsonPath)
 
@@ -80,10 +110,14 @@ func (s *Service) handleNewCapture(jsonPath string) {
 		return
 	}
 
+	// Supported schema versions
+	const maxSupportedSchemaVersion = 1
+
 	var metadata struct {
-		Version   string `json:"version"`
-		Timestamp string `json:"timestamp"`
-		Audio     struct {
+		SchemaVersion int    `json:"schema_version"`
+		Version       string `json:"version"`
+		Timestamp     string `json:"timestamp"`
+		Audio         struct {
 			File string `json:"file"`
 		} `json:"audio"`
 		Screenshot struct {
@@ -96,6 +130,13 @@ func (s *Service) handleNewCapture(jsonPath string) {
 
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		log.Printf("Failed to parse metadata: %v", err)
+		return
+	}
+
+	// Validate schema version (0 means field wasn't present - backwards compatible)
+	if metadata.SchemaVersion > maxSupportedSchemaVersion {
+		log.Printf("Unsupported schema version %d (max supported: %d), skipping: %s",
+			metadata.SchemaVersion, maxSupportedSchemaVersion, jsonPath)
 		return
 	}
 

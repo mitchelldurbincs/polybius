@@ -35,12 +35,24 @@ func main() {
 	}
 }
 
+// getEnvOrDefault returns the environment variable value or a default
+func getEnvOrDefault(envVar, defaultVal string) string {
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+	return defaultVal
+}
+
 func runBrain() {
-	// Default paths - should come from config
-	homeDir, _ := os.UserHomeDir()
-	minerDir := filepath.Join(homeDir, "Music", "Miner")
-	dbPath := filepath.Join(homeDir, ".polybius", "brain.db")
-	cedictPath := filepath.Join(homeDir, ".polybius", "cedict_ts.u8")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("Cannot determine home directory: %v", err)
+	}
+
+	// Allow environment variable overrides for paths
+	minerDir := getEnvOrDefault("POLYBIUS_MINER_DIR", filepath.Join(homeDir, "Music", "Miner"))
+	dbPath := getEnvOrDefault("POLYBIUS_DB", filepath.Join(homeDir, ".polybius", "brain.db"))
+	cedictPath := getEnvOrDefault("POLYBIUS_CEDICT", filepath.Join(homeDir, ".polybius", "cedict_ts.u8"))
 
 	// Ensure directories exist
 	os.MkdirAll(filepath.Dir(dbPath), 0755)
@@ -70,8 +82,11 @@ func runBrain() {
 }
 
 func runGym() {
-	homeDir, _ := os.UserHomeDir()
-	dbPath := filepath.Join(homeDir, ".polybius", "brain.db")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("Cannot determine home directory: %v", err)
+	}
+	dbPath := getEnvOrDefault("POLYBIUS_DB", filepath.Join(homeDir, ".polybius", "brain.db"))
 
 	db, err := storage.OpenDatabase(dbPath)
 	if err != nil {
@@ -80,7 +95,11 @@ func runGym() {
 	defer db.Close()
 
 	// Check for drafts first - show triage if any exist
-	draftCount, _ := db.CountDraftCards()
+	draftCount, err := db.CountDraftCards()
+	if err != nil {
+		log.Printf("Warning: failed to count draft cards: %v", err)
+		draftCount = 0
+	}
 	if draftCount > 0 {
 		triageModel := gym.NewTriageModel(db)
 		p := tea.NewProgram(triageModel)
@@ -144,8 +163,11 @@ func runVocabImport() {
 
 	filePath := os.Args[3]
 
-	homeDir, _ := os.UserHomeDir()
-	dbPath := filepath.Join(homeDir, ".polybius", "brain.db")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("Cannot determine home directory: %v", err)
+	}
+	dbPath := getEnvOrDefault("POLYBIUS_DB", filepath.Join(homeDir, ".polybius", "brain.db"))
 
 	// Ensure directory exists
 	os.MkdirAll(filepath.Dir(dbPath), 0755)

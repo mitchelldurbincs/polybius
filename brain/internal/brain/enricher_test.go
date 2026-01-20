@@ -2,11 +2,20 @@
 package brain
 
 import (
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
+// testDataPath returns the path to the test data directory
+func testDataPath(filename string) string {
+	_, currentFile, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(currentFile)
+	return filepath.Join(dir, "..", "..", "data", filename)
+}
+
 func TestEnrichText(t *testing.T) {
-	e, err := NewEnricher("../../data/cedict_ts.u8")
+	e, err := NewEnricher(testDataPath("cedict_ts.u8"))
 	if err != nil {
 		t.Fatalf("Failed to create enricher: %v", err)
 	}
@@ -36,7 +45,7 @@ func TestEnrichText(t *testing.T) {
 }
 
 func TestI1Scoring(t *testing.T) {
-	e, err := NewEnricher("../../data/cedict_ts.u8")
+	e, err := NewEnricher(testDataPath("cedict_ts.u8"))
 	if err != nil {
 		t.Fatalf("Failed to create enricher: %v", err)
 	}

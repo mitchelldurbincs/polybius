@@ -87,6 +87,34 @@ func (db *DB) GetMoment(id int64) (*Moment, error) {
 	return m, nil
 }
 
+// scanCardRow is a helper interface for scanning card rows from either *sql.Row or *sql.Rows
+type scannable interface {
+	Scan(dest ...interface{}) error
+}
+
+// scanCard scans a card from a row, handling nullable time fields
+func scanCard(row scannable) (*Card, error) {
+	c := &Card{}
+	var dueDate, lastReview sql.NullString
+
+	err := row.Scan(&c.ID, &c.MomentID, &c.TargetWord, &c.TargetPinyin, &c.TargetDefinition,
+		&c.Stability, &c.Difficulty, &dueDate, &lastReview, &c.Reps, &c.Lapses, &c.State)
+	if err != nil {
+		return nil, err
+	}
+
+	if dueDate.Valid {
+		t, _ := time.Parse(time.RFC3339, dueDate.String)
+		c.DueDate = &t
+	}
+	if lastReview.Valid {
+		t, _ := time.Parse(time.RFC3339, lastReview.String)
+		c.LastReview = &t
+	}
+
+	return c, nil
+}
+
 func (db *DB) InsertCard(c *Card) (int64, error) {
 	var dueDate, lastReview interface{}
 	if c.DueDate != nil {
@@ -123,20 +151,9 @@ func (db *DB) GetDueCards(limit int) ([]*Card, error) {
 
 	var cards []*Card
 	for rows.Next() {
-		c := &Card{}
-		var dueDate, lastReview sql.NullString
-		err := rows.Scan(&c.ID, &c.MomentID, &c.TargetWord, &c.TargetPinyin, &c.TargetDefinition,
-			&c.Stability, &c.Difficulty, &dueDate, &lastReview, &c.Reps, &c.Lapses, &c.State)
+		c, err := scanCard(rows)
 		if err != nil {
 			return nil, err
-		}
-		if dueDate.Valid {
-			t, _ := time.Parse(time.RFC3339, dueDate.String)
-			c.DueDate = &t
-		}
-		if lastReview.Valid {
-			t, _ := time.Parse(time.RFC3339, lastReview.String)
-			c.LastReview = &t
 		}
 		cards = append(cards, c)
 	}
@@ -182,30 +199,11 @@ func (db *DB) IsWordKnown(word string) bool {
 }
 
 func (db *DB) GetCard(id int64) (*Card, error) {
-	c := &Card{}
-	var dueDate, lastReview sql.NullString
-
-	err := db.QueryRow(`
+	row := db.QueryRow(`
 		SELECT id, moment_id, target_word, target_pinyin, target_definition,
 		       stability, difficulty, due_date, last_review, reps, lapses, state
-		FROM cards WHERE id = ?`, id).Scan(
-		&c.ID, &c.MomentID, &c.TargetWord, &c.TargetPinyin, &c.TargetDefinition,
-		&c.Stability, &c.Difficulty, &dueDate, &lastReview, &c.Reps, &c.Lapses, &c.State,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if dueDate.Valid {
-		t, _ := time.Parse(time.RFC3339, dueDate.String)
-		c.DueDate = &t
-	}
-	if lastReview.Valid {
-		t, _ := time.Parse(time.RFC3339, lastReview.String)
-		c.LastReview = &t
-	}
-
-	return c, nil
+		FROM cards WHERE id = ?`, id)
+	return scanCard(row)
 }
 
 type CardUpdate struct {
@@ -298,10 +296,7 @@ func (db *DB) GetDraftCardsByMoment(momentID int64) ([]*Card, error) {
 
 	var cards []*Card
 	for rows.Next() {
-		c := &Card{}
-		var dueDate, lastReview sql.NullString
-		err := rows.Scan(&c.ID, &c.MomentID, &c.TargetWord, &c.TargetPinyin, &c.TargetDefinition,
-			&c.Stability, &c.Difficulty, &dueDate, &lastReview, &c.Reps, &c.Lapses, &c.State)
+		c, err := scanCard(rows)
 		if err != nil {
 			return nil, err
 		}
