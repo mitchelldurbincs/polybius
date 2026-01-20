@@ -49,3 +49,53 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("CEDICTPath = %q, want %q", cfg.CEDICTPath, expectedCEDICTPath)
 	}
 }
+
+func TestLoadFromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set HOME for Unix or USERPROFILE for Windows
+	// os.UserHomeDir() checks different env vars per platform
+	if runtime.GOOS == "windows" {
+		originalUserProfile := os.Getenv("USERPROFILE")
+		os.Setenv("USERPROFILE", tmpDir)
+		defer os.Setenv("USERPROFILE", originalUserProfile)
+	} else {
+		originalHome := os.Getenv("HOME")
+		os.Setenv("HOME", tmpDir)
+		defer os.Setenv("HOME", originalHome)
+	}
+
+	// Clear env overrides
+	os.Unsetenv("POLYBIUS_MINER_DIR")
+	os.Unsetenv("POLYBIUS_DB")
+	os.Unsetenv("POLYBIUS_CEDICT")
+
+	// Create config dir and file
+	configDir := filepath.Join(tmpDir, ".polybius")
+	os.MkdirAll(configDir, 0755)
+
+	configContent := `
+miner_dir = "/custom/miner"
+db_path = "/custom/brain.db"
+cedict_path = "/custom/cedict.u8"
+`
+	configPath := filepath.Join(configDir, "config.toml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.MinerDir != "/custom/miner" {
+		t.Errorf("MinerDir = %q, want %q", cfg.MinerDir, "/custom/miner")
+	}
+	if cfg.DBPath != "/custom/brain.db" {
+		t.Errorf("DBPath = %q, want %q", cfg.DBPath, "/custom/brain.db")
+	}
+	if cfg.CEDICTPath != "/custom/cedict.u8" {
+		t.Errorf("CEDICTPath = %q, want %q", cfg.CEDICTPath, "/custom/cedict.u8")
+	}
+}
