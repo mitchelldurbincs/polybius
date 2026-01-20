@@ -20,6 +20,11 @@ type AudioPlayer struct {
 	playing  bool
 	stopChan chan struct{}
 
+	// Progress tracking
+	currentStreamer beep.StreamSeekCloser
+	totalSamples    int
+	streamSampleRate beep.SampleRate
+
 	// Error state for UI to read
 	lastError error
 }
@@ -55,6 +60,7 @@ func (p *AudioPlayer) playInternal(filePath string, stopChan chan struct{}) {
 		// Only clear playing if this is still the active playback
 		if p.stopChan == stopChan {
 			p.playing = false
+			p.currentStreamer = nil
 		}
 		p.mu.Unlock()
 	}()
@@ -92,6 +98,11 @@ func (p *AudioPlayer) playInternal(filePath string, stopChan chan struct{}) {
 		p.sampleRate = format.SampleRate
 	}
 	sampleRate := p.sampleRate
+
+	// Store streamer info for progress tracking
+	p.currentStreamer = streamer
+	p.totalSamples = streamer.Len()
+	p.streamSampleRate = format.SampleRate
 	p.mu.Unlock()
 
 	// Resample if needed
@@ -145,4 +156,54 @@ func (p *AudioPlayer) HasError() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.lastError != nil
+}
+
+// IsPlaying returns true if audio is currently playing.
+func (p *AudioPlayer) IsPlaying() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.playing
+}
+
+// Duration returns the total duration of the current audio file.
+// Returns 0 if no audio is loaded.
+func (p *AudioPlayer) Duration() time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.streamSampleRate == 0 || p.totalSamples == 0 {
+		return 0
+	}
+	return p.streamSampleRate.D(p.totalSamples)
+}
+
+// Position returns the current playback position.
+// Returns 0 if no audio is playing, or the total duration if finished.
+func (p *AudioPlayer) Position() time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.currentStreamer == nil || p.streamSampleRate == 0 {
+		// If not playing but we have duration info, we're done
+		if p.totalSamples > 0 && !p.playing {
+			return p.streamSampleRate.D(p.totalSamples)
+		}
+		return 0
+	}
+	return p.streamSampleRate.D(p.currentStreamer.Position())
+}
+
+// Progress returns a value between 0.0 and 1.0 representing playback progress.
+func (p *AudioPlayer) Progress() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.totalSamples == 0 {
+		return 0
+	}
+	if p.currentStreamer == nil {
+		// Finished playing
+		if !p.playing {
+			return 1.0
+		}
+		return 0
+	}
+	return float64(p.currentStreamer.Position()) / float64(p.totalSamples)
 }

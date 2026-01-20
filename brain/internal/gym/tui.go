@@ -4,7 +4,9 @@ package gym
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -49,6 +51,12 @@ const (
 	StateFullRevealed                     // + Pinyin + Definition
 )
 
+// tickMsg is sent periodically to update the audio progress bar
+type tickMsg time.Time
+
+// tickInterval controls how often the progress bar updates
+const tickInterval = 100 * time.Millisecond
+
 type ReviewCard struct {
 	ID         int64
 	Sentence   string
@@ -69,9 +77,16 @@ type Model struct {
 	onRate      func(cardID int64, rating int) error
 	imageWin    *ImageWindow
 	audioPlayer *AudioPlayer
+	progress    progress.Model
 }
 
 func NewModel(cards []*ReviewCard, onRate func(cardID int64, rating int) error) Model {
+	// Create progress bar with a nice gradient
+	prog := progress.New(
+		progress.WithDefaultGradient(),
+		progress.WithWidth(40),
+		progress.WithoutPercentage(),
+	)
 	return Model{
 		cards:       cards,
 		revealState: StateAudioOnly,
@@ -79,6 +94,7 @@ func NewModel(cards []*ReviewCard, onRate func(cardID int64, rating int) error) 
 		ratings:     make([]int, 0),
 		imageWin:    NewImageWindow(),
 		audioPlayer: NewAudioPlayer(),
+		progress:    prog,
 	}
 }
 
@@ -93,11 +109,32 @@ func (m Model) Init() tea.Cmd {
 			m.audioPlayer.Play(card.AudioFile)
 		}
 	}
-	return nil
+	// Start the tick for progress bar updates
+	return tickCmd()
+}
+
+// tickCmd returns a command that sends a tick message after the interval
+func tickCmd() tea.Cmd {
+	return tea.Tick(tickInterval, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tickMsg:
+		// Continue ticking if not quitting
+		if m.quitting {
+			return m, nil
+		}
+		return m, tickCmd()
+
+	case progress.FrameMsg:
+		// Handle progress bar animation frames
+		progressModel, cmd := m.progress.Update(msg)
+		m.progress = progressModel.(progress.Model)
+		return m, cmd
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -187,11 +224,8 @@ func (m Model) View() string {
 	case StateAudioOnly:
 		// Only show that audio is playing, no text - train listening!
 		content.WriteString("Listen to the audio...\n\n")
-		if m.audioPlayer.HasError() {
-			content.WriteString("Audio: [Unavailable]\n\n")
-		} else {
-			content.WriteString("Audio: [Playing...]\n\n")
-		}
+		content.WriteString(m.renderAudioProgress())
+		content.WriteString("\n\n")
 		content.WriteString(hiddenStyle.Render("[Press Space to reveal what was said]"))
 
 	case StateHanziRevealed:
@@ -200,6 +234,8 @@ func (m Model) View() string {
 		content.WriteString(fmt.Sprintf("Target: %s\n", targetStyle.Render(card.TargetWord)))
 		content.WriteString(fmt.Sprintf("Pinyin: %s\n", hiddenStyle.Render("[hidden]")))
 		content.WriteString(fmt.Sprintf("Meaning: %s\n\n", hiddenStyle.Render("[hidden]")))
+		content.WriteString(m.renderAudioProgress())
+		content.WriteString("\n\n")
 		content.WriteString(promptStyle.Render("Did you hear it correctly? Rate now or [Space] for meaning"))
 
 	case StateFullRevealed:
@@ -207,7 +243,8 @@ func (m Model) View() string {
 		content.WriteString(fmt.Sprintf("Sentence: %s\n\n", highlightWord(card.Sentence, card.TargetWord)))
 		content.WriteString(fmt.Sprintf("Target: %s\n", targetStyle.Render(card.TargetWord)))
 		content.WriteString(fmt.Sprintf("Pinyin: %s\n", card.Pinyin))
-		content.WriteString(fmt.Sprintf("Meaning: %s\n", card.Definition))
+		content.WriteString(fmt.Sprintf("Meaning: %s\n\n", card.Definition))
+		content.WriteString(m.renderAudioProgress())
 	}
 
 	cardView := cardStyle.Render(content.String())
@@ -257,6 +294,45 @@ func (m Model) summaryView() string {
 
 	sb.WriteString("\nGreat work! See you next time.\n")
 	return sb.String()
+}
+
+// renderAudioProgress renders the audio progress bar with time display
+func (m Model) renderAudioProgress() string {
+	if m.audioPlayer.HasError() {
+		return "Audio: [Unavailable]"
+	}
+
+	duration := m.audioPlayer.Duration()
+	if duration == 0 {
+		return "Audio: [Loading...]"
+	}
+
+	position := m.audioPlayer.Position()
+	progress := m.audioPlayer.Progress()
+	isPlaying := m.audioPlayer.IsPlaying()
+
+	// Format times as seconds with one decimal
+	posSeconds := position.Seconds()
+	durSeconds := duration.Seconds()
+	timeStr := fmt.Sprintf("%.1fs / %.1fs", posSeconds, durSeconds)
+
+	// Build the progress line
+	var status string
+	if !isPlaying && progress >= 1.0 {
+		status = hiddenStyle.Render("[Finished - R to replay]")
+	} else if isPlaying {
+		status = ""
+	} else {
+		status = hiddenStyle.Render("[Stopped]")
+	}
+
+	// Use ViewAs for static rendering (no animation needed since we're polling)
+	progressBar := m.progress.ViewAs(progress)
+
+	if status != "" {
+		return fmt.Sprintf("%s %s  %s", progressBar, timeStr, status)
+	}
+	return fmt.Sprintf("%s %s", progressBar, timeStr)
 }
 
 func highlightWord(sentence, word string) string {
