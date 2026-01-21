@@ -9,7 +9,7 @@
 //! - Ctrl+Alt+2: Save last 30 seconds
 //! - Ctrl+Alt+3: Save last 60 seconds
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
@@ -214,7 +214,7 @@ fn handle_save(
     audio: &mut AudioCapture,
     vision: &VisionCapture,
     duration: BufferDuration,
-    save_dir: &PathBuf,
+    save_dir: &Path,
     show_notification: bool,
     config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -301,8 +301,7 @@ fn handle_save(
 
     // 3. Save metadata JSON if enabled
     if vision.is_metadata_enabled() {
-        let capture_ref = capture_result.as_ref();
-        if let Some(ref result) = capture_ref {
+        if let Some(result) = capture_result.as_ref() {
             let metadata = vision.create_metadata(
                 &audio_filename,
                 duration_secs,
@@ -330,7 +329,7 @@ fn handle_save(
 /// Handle screenshot-only hotkey (save + clipboard)
 fn handle_screenshot_only(
     vision: &VisionCapture,
-    save_dir: &PathBuf,
+    save_dir: &Path,
     show_notification: bool,
     config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -430,44 +429,36 @@ fn generate_timestamp() -> u64 {
         .as_secs()
 }
 
-/// Open the save folder in the file manager
-fn open_folder(path: &PathBuf) {
+/// Open a path with the system's default application
+fn open_with_default_app(path: &Path) {
     #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("explorer").arg(path).spawn();
-    }
-
+    let cmd = "explorer";
     #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(path).spawn();
-    }
-
+    let cmd = "open";
     #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
-    }
+    let cmd = "xdg-open";
+
+    let _ = std::process::Command::new(cmd).arg(path).spawn();
+}
+
+/// Open the save folder in the file manager
+fn open_folder(path: &Path) {
+    open_with_default_app(path);
 }
 
 /// Open the config file in the default editor
 fn open_config_file() {
     if let Some(config_path) = Config::config_path() {
+        // On Windows, use notepad for config files to ensure text editor opens
         #[cfg(target_os = "windows")]
         {
             let _ = std::process::Command::new("notepad")
                 .arg(&config_path)
                 .spawn();
         }
-
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_os = "windows"))]
         {
-            let _ = std::process::Command::new("open").arg(&config_path).spawn();
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            let _ = std::process::Command::new("xdg-open")
-                .arg(&config_path)
-                .spawn();
+            open_with_default_app(&config_path);
         }
     }
 }

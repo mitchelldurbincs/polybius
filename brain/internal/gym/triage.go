@@ -11,29 +11,6 @@ import (
 	"github.com/mitchelldurbin/polybius/brain/internal/storage"
 )
 
-var (
-	triageTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("205"))
-
-	momentStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
-
-	selectedMomentStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("212")).
-				Bold(true)
-
-	cardItemStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			PaddingLeft(4)
-
-	statsStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
-	triageHelpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-)
-
 type MomentWithCards struct {
 	Moment *storage.Moment
 	Cards  []*storage.Card
@@ -193,8 +170,8 @@ func (m TriageModel) View() string {
 	}
 
 	// Header
-	header := triageTitleStyle.Render("TRIAGE")
-	stats := statsStyle.Render(fmt.Sprintf("Draft: %d cards in %d moments", draftCount, len(m.moments)))
+	header := TitleStyle.Render("TRIAGE")
+	stats := MutedStyle.Render(fmt.Sprintf("Draft: %d cards in %d moments", draftCount, len(m.moments)))
 	sb.WriteString(fmt.Sprintf("%s    %s", header, stats))
 
 	// Show load errors if any
@@ -207,17 +184,17 @@ func (m TriageModel) View() string {
 
 	if len(m.moments) == 0 {
 		sb.WriteString("No drafts to triage. All captures have been processed.\n\n")
-		sb.WriteString(triageHelpStyle.Render("[R] Start Review    [Q] Quit"))
+		sb.WriteString(MutedStyle.Render("[R] Start Review    [Q] Quit"))
 		return sb.String()
 	}
 
 	// List moments
 	for i, mwc := range m.moments {
 		prefix := "  "
-		style := momentStyle
+		style := TextStyle
 		if i == m.cursor {
 			prefix = "> "
-			style = selectedMomentStyle
+			style = AccentStyle
 		}
 
 		// Expand indicator
@@ -240,14 +217,14 @@ func (m TriageModel) View() string {
 		if m.expanded[mwc.Moment.ID] {
 			for _, card := range mwc.Cards {
 				cardLine := fmt.Sprintf("└─ %s (%s)", card.TargetWord, card.TargetPinyin)
-				sb.WriteString(cardItemStyle.Render(cardLine))
+				sb.WriteString(NestedItemStyle.Render(cardLine))
 				sb.WriteString("\n")
 			}
 		}
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(triageHelpStyle.Render("[↑↓] Navigate  [Enter] Expand  [A] Approve  [D] Delete  [R] Review  [Q] Quit"))
+	sb.WriteString(MutedStyle.Render("[↑↓] Navigate  [Enter] Expand  [A] Approve  [D] Delete  [R] Review  [Q] Quit"))
 
 	return sb.String()
 }

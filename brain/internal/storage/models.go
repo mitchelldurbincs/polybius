@@ -59,32 +59,10 @@ func (db *DB) InsertMoment(m *Moment) (int64, error) {
 }
 
 func (db *DB) GetMoment(id int64) (*Moment, error) {
-	m := &Moment{}
-	var segJSON sql.NullString
-	var screenshot sql.NullString
-	var rawText sql.NullString
-	var i1Score sql.NullFloat64
-	var createdAt string
-
-	err := db.QueryRow(`
+	row := db.QueryRow(`
 		SELECT id, timestamp, audio_file, screenshot_file, raw_text, segmented_json, i1_score, status, created_at
-		FROM moments WHERE id = ?`, id).Scan(
-		&m.ID, &m.Timestamp, &m.AudioFile, &screenshot, &rawText, &segJSON, &i1Score, &m.Status, &createdAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	m.ScreenshotFile = screenshot.String
-	m.RawText = rawText.String
-	m.I1Score = i1Score.Float64
-	m.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-
-	if segJSON.Valid {
-		_ = json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
-	}
-
-	return m, nil
+		FROM moments WHERE id = ?`, id)
+	return scanMoment(row)
 }
 
 // scanCardRow is a helper interface for scanning card rows from either *sql.Row or *sql.Rows
@@ -113,6 +91,33 @@ func scanCard(row scannable) (*Card, error) {
 	}
 
 	return c, nil
+}
+
+// scanMoment scans a moment from a row, handling nullable fields
+func scanMoment(row scannable) (*Moment, error) {
+	m := &Moment{}
+	var segJSON sql.NullString
+	var screenshot sql.NullString
+	var rawText sql.NullString
+	var i1Score sql.NullFloat64
+	var createdAt string
+
+	err := row.Scan(&m.ID, &m.Timestamp, &m.AudioFile, &screenshot, &rawText,
+		&segJSON, &i1Score, &m.Status, &createdAt)
+	if err != nil {
+		return nil, err
+	}
+
+	m.ScreenshotFile = screenshot.String
+	m.RawText = rawText.String
+	m.I1Score = i1Score.Float64
+	m.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+
+	if segJSON.Valid {
+		_ = json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
+	}
+
+	return m, nil
 }
 
 func (db *DB) InsertCard(c *Card) (int64, error) {
@@ -256,28 +261,10 @@ func (db *DB) GetDraftMoments() ([]*Moment, error) {
 
 	var moments []*Moment
 	for rows.Next() {
-		m := &Moment{}
-		var segJSON sql.NullString
-		var screenshot sql.NullString
-		var rawText sql.NullString
-		var i1Score sql.NullFloat64
-		var createdAt string
-
-		err := rows.Scan(&m.ID, &m.Timestamp, &m.AudioFile, &screenshot, &rawText,
-			&segJSON, &i1Score, &m.Status, &createdAt)
+		m, err := scanMoment(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		m.ScreenshotFile = screenshot.String
-		m.RawText = rawText.String
-		m.I1Score = i1Score.Float64
-		m.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-
-		if segJSON.Valid {
-			_ = json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
-		}
-
 		moments = append(moments, m)
 	}
 	return moments, nil

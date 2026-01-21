@@ -16,7 +16,7 @@ pub struct CaptureRegion {
 }
 
 /// Main configuration struct
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -144,16 +144,6 @@ fn default_ocr_language() -> String {
     "en-US".to_string()
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            hotkeys: HotkeyConfig::default(),
-            audio: AudioConfig::default(),
-            vision: VisionConfig::default(),
-        }
-    }
-}
 
 impl Default for GeneralConfig {
     fn default() -> Self {
@@ -262,9 +252,9 @@ impl Config {
         let path = &self.general.save_directory;
 
         // Expand ~ to home directory
-        if path.starts_with("~/") {
+        if let Some(stripped) = path.strip_prefix("~/") {
             if let Some(home) = directories::UserDirs::new() {
-                return home.home_dir().join(&path[2..]);
+                return home.home_dir().join(stripped);
             }
         }
 

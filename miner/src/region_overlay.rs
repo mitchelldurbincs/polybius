@@ -80,7 +80,7 @@ mod windows_impl {
 
         /// Scale selection from window coordinates to image coordinates
         fn to_capture_region(
-            &self,
+            self,
             window_size: (i32, i32),
             image_size: (u32, u32),
         ) -> CaptureRegion {

@@ -146,22 +146,24 @@ impl Screenshot {
 
 // Windows implementation using win-screenshot
 #[cfg(windows)]
+fn bgra_to_screenshot(buf: win_screenshot::capture::RgbBuf) -> Screenshot {
+    let mut rgba_data = buf.pixels;
+    for chunk in rgba_data.chunks_exact_mut(4) {
+        chunk.swap(0, 2); // Swap B and R
+    }
+    Screenshot {
+        width: buf.width,
+        height: buf.height,
+        data: rgba_data,
+    }
+}
+
+#[cfg(windows)]
 fn capture_screen_windows() -> Result<Screenshot, ScreenshotError> {
     use win_screenshot::prelude::*;
 
     let buf = capture_display().map_err(|e| ScreenshotError::CaptureError(format!("{:?}", e)))?;
-
-    // win-screenshot returns BGRA, convert to RGBA
-    let mut rgba_data = buf.pixels.clone();
-    for chunk in rgba_data.chunks_exact_mut(4) {
-        chunk.swap(0, 2); // Swap B and R
-    }
-
-    Ok(Screenshot {
-        width: buf.width,
-        height: buf.height,
-        data: rgba_data,
-    })
+    Ok(bgra_to_screenshot(buf))
 }
 
 #[cfg(windows)]
@@ -185,17 +187,7 @@ fn capture_window_windows(title_pattern: &str) -> Result<Screenshot, ScreenshotE
     let buf = capture_window(target_hwnd.hwnd)
         .map_err(|e| ScreenshotError::CaptureError(format!("{:?}", e)))?;
 
-    // win-screenshot returns BGRA, convert to RGBA
-    let mut rgba_data = buf.pixels.clone();
-    for chunk in rgba_data.chunks_exact_mut(4) {
-        chunk.swap(0, 2); // Swap B and R
-    }
-
-    Ok(Screenshot {
-        width: buf.width,
-        height: buf.height,
-        data: rgba_data,
-    })
+    Ok(bgra_to_screenshot(buf))
 }
 
 /// Capture the foreground (active) window on Windows
@@ -215,17 +207,7 @@ fn capture_foreground_windows() -> Result<Screenshot, ScreenshotError> {
     let buf = capture_window(hwnd.0 as isize)
         .map_err(|e| ScreenshotError::CaptureError(format!("{:?}", e)))?;
 
-    // win-screenshot returns BGRA, convert to RGBA
-    let mut rgba_data = buf.pixels.clone();
-    for chunk in rgba_data.chunks_exact_mut(4) {
-        chunk.swap(0, 2); // Swap B and R
-    }
-
-    Ok(Screenshot {
-        width: buf.width,
-        height: buf.height,
-        data: rgba_data,
-    })
+    Ok(bgra_to_screenshot(buf))
 }
 
 // Non-Windows: screenshot capture not available

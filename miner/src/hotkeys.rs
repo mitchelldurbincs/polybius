@@ -28,6 +28,7 @@ pub struct HotkeyManager {
 
 impl HotkeyManager {
     /// Create a new hotkey manager and register hotkeys based on config
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         hotkey_5s_str: &str,
         hotkey_10s_str: &str,

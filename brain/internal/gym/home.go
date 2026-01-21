@@ -22,37 +22,6 @@ const (
 	ActionQuit
 )
 
-var (
-	homeTitleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("205"))
-
-	boxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1).
-			Width(30)
-
-	boxTitleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("212"))
-
-	statLabelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
-	statValueStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
-
-	navStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
-	navKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("229")).
-			Bold(true)
-
-	emptyStateStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Italic(true)
-)
 
 // HomeStats contains all statistics displayed on the home screen
 type HomeStats struct {
@@ -120,12 +89,12 @@ func (m HomeModel) View() string {
 	var sb strings.Builder
 
 	// Title
-	sb.WriteString(homeTitleStyle.Render("POLYBIUS GYM"))
+	sb.WriteString(TitleStyle.Render("POLYBIUS GYM"))
 	sb.WriteString("\n\n")
 
 	// Empty state check
 	if m.stats.TotalCards == 0 && m.stats.DraftCount == 0 {
-		sb.WriteString(emptyStateStyle.Render("No cards yet. Capture some moments with the Miner to get started!"))
+		sb.WriteString(EmptyStyle.Render("No cards yet. Capture some moments with the Miner to get started!"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderNavigation())
 		return sb.String()
@@ -150,7 +119,7 @@ func (m HomeModel) View() string {
 func (m HomeModel) renderReviewsBox() string {
 	var content strings.Builder
 
-	content.WriteString(boxTitleStyle.Render("Reviews"))
+	content.WriteString(AccentStyle.Render("Reviews"))
 	content.WriteString("\n")
 	content.WriteString(m.renderStat("Due now", fmt.Sprintf("%d", m.stats.DueNow)))
 	content.WriteString(m.renderStat("Due today", fmt.Sprintf("%d", m.stats.DueToday)))
@@ -163,13 +132,13 @@ func (m HomeModel) renderReviewsBox() string {
 	}
 	content.WriteString(m.renderStat("Next review", nextReviewStr))
 
-	return boxStyle.Render(content.String())
+	return BoxStyle.Render(content.String())
 }
 
 func (m HomeModel) renderProgressBox() string {
 	var content strings.Builder
 
-	content.WriteString(boxTitleStyle.Render("Progress"))
+	content.WriteString(AccentStyle.Render("Progress"))
 	content.WriteString("\n")
 	content.WriteString(m.renderStat("Words learned", fmt.Sprintf("%d", m.stats.WordsLearned)))
 	content.WriteString(m.renderStat("Retention", fmt.Sprintf("%.0f%%", m.stats.RetentionRate*100)))
@@ -182,11 +151,11 @@ func (m HomeModel) renderProgressBox() string {
 		content.WriteString(m.renderStat("Last 7 days", sparkline))
 	}
 
-	return boxStyle.Render(content.String())
+	return BoxStyle.Render(content.String())
 }
 
 func (m HomeModel) renderStat(label, value string) string {
-	return fmt.Sprintf("%s: %s\n", statLabelStyle.Render(label), statValueStyle.Render(value))
+	return fmt.Sprintf("%s: %s\n", MutedStyle.Render(label), TextStyle.Render(value))
 }
 
 func (m HomeModel) renderSparkline(values []int) string {
@@ -224,18 +193,18 @@ func (m HomeModel) renderSparkline(values []int) string {
 func (m HomeModel) renderNavigation() string {
 	var parts []string
 
-	parts = append(parts, fmt.Sprintf("%s Review", navKeyStyle.Render("[r]")))
+	parts = append(parts, fmt.Sprintf("%s Review", NavKeyStyle.Render("[r]")))
 
 	triageLabel := "Triage"
 	if m.stats.DraftCount > 0 {
 		triageLabel = fmt.Sprintf("Triage (%d drafts)", m.stats.DraftCount)
 	}
-	parts = append(parts, fmt.Sprintf("%s %s", navKeyStyle.Render("[t]"), triageLabel))
+	parts = append(parts, fmt.Sprintf("%s %s", NavKeyStyle.Render("[t]"), triageLabel))
 
-	parts = append(parts, fmt.Sprintf("%s Cards", navKeyStyle.Render("[c]")))
-	parts = append(parts, fmt.Sprintf("%s Quit", navKeyStyle.Render("[q]")))
+	parts = append(parts, fmt.Sprintf("%s Cards", NavKeyStyle.Render("[c]")))
+	parts = append(parts, fmt.Sprintf("%s Quit", NavKeyStyle.Render("[q]")))
 
-	return navStyle.Render(strings.Join(parts, "    "))
+	return NavStyle.Render(strings.Join(parts, "    "))
 }
 
 // Action returns the action selected by the user

@@ -7,45 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/mitchelldurbin/polybius/brain/internal/fsrs"
-)
-
-var (
-	cardsListTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("205"))
-
-	cardsListItemStyle = lipgloss.NewStyle().
-				PaddingLeft(2)
-
-	cardsListSelectedStyle = lipgloss.NewStyle().
-				PaddingLeft(2).
-				Foreground(lipgloss.Color("229"))
-
-	cardsListCursorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("205"))
-
-	cardsListWordStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("212"))
-
-	cardsListSentenceStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("252"))
-
-	cardsListMetaStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241"))
-
-	cardsListEmptyStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241")).
-				Italic(true)
-
-	cardsListNavStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241"))
-
-	cardsListNavKeyStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("229")).
-				Bold(true)
 )
 
 // CardListItem represents a card in the cards list view
@@ -110,12 +72,12 @@ func (m CardsModel) View() string {
 	var sb strings.Builder
 
 	// Title
-	sb.WriteString(cardsListTitleStyle.Render("ALL CARDS"))
+	sb.WriteString(TitleStyle.Render("ALL CARDS"))
 	sb.WriteString("\n\n")
 
 	// Empty state
 	if len(m.cards) == 0 {
-		sb.WriteString(cardsListEmptyStyle.Render("No cards yet. Create some cards through triage first!"))
+		sb.WriteString(EmptyStyle.Render("No cards yet. Create some cards through triage first!"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderNavigation())
 		return sb.String()
@@ -139,25 +101,25 @@ func (m CardsModel) renderCardItem(index int, card *CardListItem) string {
 	// Cursor indicator
 	cursor := "  "
 	if index == m.cursor {
-		cursor = cardsListCursorStyle.Render("> ")
+		cursor = CursorStyle.Render("> ")
 	}
 	sb.WriteString(cursor)
 
 	// Target word
-	sb.WriteString(cardsListWordStyle.Render(card.TargetWord))
+	sb.WriteString(AccentStyle.Render(card.TargetWord))
 	sb.WriteString("  ")
 
 	// Sentence preview (truncated)
 	sentence := truncateSentence(card.Sentence, 35)
-	sb.WriteString(cardsListSentenceStyle.Render(sentence))
+	sb.WriteString(TextStyle.Render(sentence))
 	sb.WriteString("\n")
 
 	// Meta line (indented to align with content)
 	meta := m.renderCardMeta(card)
 	if index == m.cursor {
-		sb.WriteString(cardsListSelectedStyle.Render("    " + meta))
+		sb.WriteString(SelectedItemStyle.Render("  " + meta))
 	} else {
-		sb.WriteString(cardsListItemStyle.Render("  " + meta))
+		sb.WriteString(ItemStyle.Render(meta))
 	}
 
 	return sb.String()
@@ -184,16 +146,16 @@ func (m CardsModel) renderCardMeta(card *CardListItem) string {
 	// Reviews count
 	parts = append(parts, fmt.Sprintf("Reviews: %d", card.Reps))
 
-	return cardsListMetaStyle.Render(strings.Join(parts, " | "))
+	return MutedStyle.Render(strings.Join(parts, " | "))
 }
 
 func (m CardsModel) renderNavigation() string {
 	var parts []string
 
-	parts = append(parts, fmt.Sprintf("%s/%s Navigate", cardsListNavKeyStyle.Render("j"), cardsListNavKeyStyle.Render("k")))
-	parts = append(parts, fmt.Sprintf("%s Back", cardsListNavKeyStyle.Render("[esc]")))
+	parts = append(parts, fmt.Sprintf("%s/%s Navigate", NavKeyStyle.Render("j"), NavKeyStyle.Render("k")))
+	parts = append(parts, fmt.Sprintf("%s Back", NavKeyStyle.Render("[esc]")))
 
-	return cardsListNavStyle.Render(strings.Join(parts, "    "))
+	return NavStyle.Render(strings.Join(parts, "    "))
 }
 
 // GoBack returns true if the user pressed escape to go back

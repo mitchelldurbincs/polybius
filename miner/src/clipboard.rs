@@ -47,7 +47,7 @@ mod windows_impl {
 
         // DIB format: BITMAPINFOHEADER + pixel data (BGR, bottom-up)
         let header_size = std::mem::size_of::<BITMAPINFOHEADER>();
-        let row_size = ((width * 3 + 3) / 4) * 4; // 24-bit BGR, padded to 4-byte boundary
+        let row_size = (width * 3).div_ceil(4) * 4; // 24-bit BGR, padded to 4-byte boundary
         let pixel_size = (row_size * height) as usize;
         let total_size = header_size + pixel_size;
 
