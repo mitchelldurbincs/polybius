@@ -338,3 +338,27 @@ func (db *DB) DeleteMoment(momentID int64) error {
 	_, err = db.Exec(`DELETE FROM moments WHERE id = ?`, momentID)
 	return err
 }
+
+// GetAllCards returns all non-draft cards ordered by due date
+func (db *DB) GetAllCards() ([]*Card, error) {
+	rows, err := db.Query(`
+		SELECT id, moment_id, target_word, target_pinyin, target_definition,
+		       stability, difficulty, due_date, last_review, reps, lapses, state
+		FROM cards
+		WHERE state != 'draft'
+		ORDER BY due_date ASC NULLS FIRST`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []*Card
+	for rows.Next() {
+		c, err := scanCard(rows)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, nil
+}
