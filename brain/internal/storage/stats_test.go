@@ -156,6 +156,32 @@ func TestGetStreak(t *testing.T) {
 	}
 }
 
+func TestGetStreak_NoReviewToday(t *testing.T) {
+	db := setupTestDB(t)
+
+	momentID, _ := db.InsertMoment(&Moment{
+		Timestamp: time.Now().Format(time.RFC3339),
+		AudioFile: "test.wav",
+		Status:    "processed",
+	})
+
+	cardID, _ := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review"})
+
+	// NO review today - but reviewed yesterday and day before
+	db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour))
+	db.insertReviewAt(cardID, 3, time.Now().Add(-48*time.Hour))
+
+	streak, err := db.GetStreak()
+	if err != nil {
+		t.Fatalf("GetStreak failed: %v", err)
+	}
+
+	// Streak should be 2 (yesterday + day before), not 0
+	if streak != 2 {
+		t.Errorf("Streak = %d, want 2 (streak should count from yesterday if no review today)", streak)
+	}
+}
+
 func TestGetReviewsPerDay(t *testing.T) {
 	db := setupTestDB(t)
 

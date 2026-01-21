@@ -2,6 +2,7 @@
 package storage
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -75,7 +76,7 @@ func (db *DB) GetNextDueTime() (*time.Time, error) {
 
 	if err != nil {
 		// No rows found means no future due cards
-		if err.Error() == "sql: no rows in result set" {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("getting next due time: %w", err)
@@ -133,7 +134,7 @@ func (db *DB) GetReviewStats(days int) (*ReviewStats, error) {
 }
 
 // GetStreak returns the number of consecutive days with at least one review,
-// counting backwards from today.
+// counting backwards from today or yesterday (if no review today).
 func (db *DB) GetStreak() (int, error) {
 	// Get all unique dates with reviews, ordered descending
 	// Extract date part from RFC3339 format (first 10 characters: YYYY-MM-DD)
@@ -160,12 +161,25 @@ func (db *DB) GetStreak() (int, error) {
 		return 0, nil
 	}
 
-	// Count consecutive days starting from today
+	// Count consecutive days starting from today or yesterday
 	today := time.Now()
-	streak := 0
+	todayStr := today.Format("2006-01-02")
+	yesterdayStr := today.AddDate(0, 0, -1).Format("2006-01-02")
 
+	// Determine starting offset: 0 if reviewed today, 1 if most recent is yesterday
+	startOffset := 0
+	if dates[0] == todayStr {
+		startOffset = 0
+	} else if dates[0] == yesterdayStr {
+		startOffset = 1
+	} else {
+		// Most recent review is older than yesterday - streak is broken
+		return 0, nil
+	}
+
+	streak := 0
 	for i, dateStr := range dates {
-		expectedDate := today.AddDate(0, 0, -i).Format("2006-01-02")
+		expectedDate := today.AddDate(0, 0, -(i + startOffset)).Format("2006-01-02")
 		if dateStr == expectedDate {
 			streak++
 		} else {
