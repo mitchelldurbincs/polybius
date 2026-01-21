@@ -29,7 +29,7 @@ fn test_buffer_duration_equality() {
 #[test]
 fn test_buffer_duration_clone() {
     let duration = BufferDuration::Seconds10;
-    let cloned = duration.clone();
+    let cloned = duration;
     assert_eq!(duration, cloned);
 }
 
@@ -65,7 +65,7 @@ fn test_buffer_duration_hash() {
 
 #[test]
 fn test_buffer_duration_in_vec() {
-    let durations = vec![
+    let durations = [
         BufferDuration::Seconds5,
         BufferDuration::Seconds10,
         BufferDuration::Seconds15,
@@ -204,7 +204,7 @@ fn test_duration_to_samples() {
     };
 
     // 1 second = 44100 samples (mono)
-    let samples_1s = format.sample_rate as usize * 1;
+    let samples_1s = format.sample_rate as usize;
     assert_eq!(samples_1s, 44100);
 
     // With stereo
@@ -212,7 +212,7 @@ fn test_duration_to_samples() {
         sample_rate: 44100,
         channels: 2,
     };
-    let stereo_samples_1s = stereo.sample_rate as usize * stereo.channels as usize * 1;
+    let stereo_samples_1s = stereo.sample_rate as usize * stereo.channels as usize;
     assert_eq!(stereo_samples_1s, 88200);
 }
 
