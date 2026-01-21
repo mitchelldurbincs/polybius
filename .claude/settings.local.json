@@ -18,7 +18,8 @@
       "Bash(./bin/polybius vocab import:*)",
       "Bash(go get:*)",
       "Skill(superpowers:subagent-driven-development)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(git -C \"C:/Users/mitchell.durbin/source/repos/polybius\" log --oneline -10)"
     ]
   }
 }
