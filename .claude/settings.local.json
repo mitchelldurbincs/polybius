@@ -16,7 +16,9 @@
       "Bash(go test:*)",
       "Skill(brainstorming)",
       "Bash(./bin/polybius vocab import:*)",
-      "Bash(go get:*)"
+      "Bash(go get:*)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(cargo test:*)"
     ]
   }
 }

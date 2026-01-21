@@ -11,7 +11,9 @@ Polybius is a context-first sentence mining engine for language learners, focuse
 - **The Brain** (Go) - Processes captures with NLP and schedules reviews using FSRS-6
 - **The Gym** (Go TUI) - Terminal UI for audio-first spaced repetition review
 
+## DO's and DONT's (PAY ATTENTION)
 **MAKE SURE TO TEST YOUR CHANGES / MAKE SURE YOU DIDN'T BREAK ANYTHING PLEASE :P**
+**Use quotations since this is PS - like so - cd "C:/Users/mitchell.durbin/source/repos/polybius/miner"**
 
 ## Build and Development Commands
 
