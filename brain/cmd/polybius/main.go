@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mitchelldurbin/polybius/brain/internal/brain"
+	"github.com/mitchelldurbin/polybius/brain/internal/config"
 	"github.com/mitchelldurbin/polybius/brain/internal/gym"
 	"github.com/mitchelldurbin/polybius/brain/internal/storage"
 	"github.com/mitchelldurbin/polybius/brain/internal/vocab"
@@ -22,48 +23,36 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load config once at startup
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
 	switch os.Args[1] {
 	case "brain":
-		runBrain()
+		runBrain(cfg)
 	case "gym":
-		runGym()
+		runGym(cfg)
 	case "vocab":
-		runVocab()
+		runVocab(cfg)
 	default:
 		fmt.Printf("Unknown command: %s\n", os.Args[1])
 		os.Exit(1)
 	}
 }
 
-// getEnvOrDefault returns the environment variable value or a default
-func getEnvOrDefault(envVar, defaultVal string) string {
-	if v := os.Getenv(envVar); v != "" {
-		return v
-	}
-	return defaultVal
-}
-
-func runBrain() {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatalf("Cannot determine home directory: %v", err)
-	}
-
-	// Allow environment variable overrides for paths
-	minerDir := getEnvOrDefault("POLYBIUS_MINER_DIR", filepath.Join(homeDir, "Music", "Miner"))
-	dbPath := getEnvOrDefault("POLYBIUS_DB", filepath.Join(homeDir, ".polybius", "brain.db"))
-	cedictPath := getEnvOrDefault("POLYBIUS_CEDICT", filepath.Join(homeDir, ".polybius", "cedict_ts.u8"))
-
+func runBrain(cfg *config.Config) {
 	// Ensure directories exist
-	os.MkdirAll(filepath.Dir(dbPath), 0755)
+	os.MkdirAll(filepath.Dir(cfg.DBPath), 0755)
 
-	cfg := brain.Config{
-		DBPath:     dbPath,
-		CEDICTPath: cedictPath,
-		MinerDir:   minerDir,
+	brainCfg := brain.Config{
+		DBPath:     cfg.DBPath,
+		CEDICTPath: cfg.CEDICTPath,
+		MinerDir:   cfg.MinerDir,
 	}
 
-	svc, err := brain.NewService(cfg)
+	svc, err := brain.NewService(brainCfg)
 	if err != nil {
 		log.Fatalf("Failed to start Brain: %v", err)
 	}
@@ -81,14 +70,8 @@ func runBrain() {
 	svc.Stop()
 }
 
-func runGym() {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatalf("Cannot determine home directory: %v", err)
-	}
-	dbPath := getEnvOrDefault("POLYBIUS_DB", filepath.Join(homeDir, ".polybius", "brain.db"))
-
-	db, err := storage.OpenDatabase(dbPath)
+func runGym(cfg *config.Config) {
+	db, err := storage.OpenDatabase(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
@@ -140,7 +123,7 @@ func runGym() {
 	}
 }
 
-func runVocab() {
+func runVocab(cfg *config.Config) {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: polybius vocab <import> [args]")
 		os.Exit(1)
@@ -148,14 +131,14 @@ func runVocab() {
 
 	switch os.Args[2] {
 	case "import":
-		runVocabImport()
+		runVocabImport(cfg)
 	default:
 		fmt.Printf("Unknown vocab command: %s\n", os.Args[2])
 		os.Exit(1)
 	}
 }
 
-func runVocabImport() {
+func runVocabImport(cfg *config.Config) {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: polybius vocab import <file.tsv>")
 		os.Exit(1)
@@ -163,16 +146,10 @@ func runVocabImport() {
 
 	filePath := os.Args[3]
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatalf("Cannot determine home directory: %v", err)
-	}
-	dbPath := getEnvOrDefault("POLYBIUS_DB", filepath.Join(homeDir, ".polybius", "brain.db"))
-
 	// Ensure directory exists
-	os.MkdirAll(filepath.Dir(dbPath), 0755)
+	os.MkdirAll(filepath.Dir(cfg.DBPath), 0755)
 
-	db, err := storage.OpenDatabase(dbPath)
+	db, err := storage.OpenDatabase(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
