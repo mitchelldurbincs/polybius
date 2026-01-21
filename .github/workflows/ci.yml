@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust (miner)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: miner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            miner/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('miner/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+
+      - name: Run tests with coverage
+        run: cargo tarpaulin --out xml --output-file coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: miner/coverage.xml
+          flags: rust
+          fail_ci_if_error: false
+
+  go:
+    name: Go (brain)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: brain
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache: true
+          cache-dependency-path: brain/go.sum
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: brain
+
+      - name: Check formatting
+        run: |
+          $unformatted = gofmt -l .
+          if ($unformatted) {
+            Write-Host "Unformatted files:"
+            Write-Host $unformatted
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Run tests with coverage
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: brain/coverage.out
+          flags: go
+          fail_ci_if_error: false
