@@ -12,7 +12,9 @@ type Segmenter struct {
 func NewSegmenter() (*Segmenter, error) {
 	var seg gse.Segmenter
 	// Load default dictionary (embedded)
-	seg.LoadDict()
+	if err := seg.LoadDict(); err != nil {
+		return nil, err
+	}
 	return &Segmenter{seg: seg}, nil
 }
 

@@ -6,9 +6,7 @@ import (
 	"runtime"
 )
 
-type ImageWindow struct {
-	cmd *exec.Cmd
-}
+type ImageWindow struct{}
 
 func NewImageWindow() *ImageWindow {
 	return &ImageWindow{}

@@ -3,6 +3,7 @@ package gym
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -160,7 +161,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Submit rating
 				if m.onRate != nil {
-					m.onRate(card.ID, rating)
+					if err := m.onRate(card.ID, rating); err != nil {
+						log.Printf("Failed to submit rating: %v", err)
+					}
 				}
 
 				m.ratings = append(m.ratings, rating)

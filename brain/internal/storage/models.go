@@ -81,7 +81,7 @@ func (db *DB) GetMoment(id int64) (*Moment, error) {
 	m.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 
 	if segJSON.Valid {
-		json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
+		_ = json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
 	}
 
 	return m, nil
@@ -275,7 +275,7 @@ func (db *DB) GetDraftMoments() ([]*Moment, error) {
 		m.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 
 		if segJSON.Valid {
-			json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
+			_ = json.Unmarshal([]byte(segJSON.String), &m.SegmentedWords)
 		}
 
 		moments = append(moments, m)

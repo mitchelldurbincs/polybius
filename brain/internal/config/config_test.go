@@ -73,7 +73,9 @@ func TestLoadFromFile(t *testing.T) {
 
 	// Create config dir and file
 	configDir := filepath.Join(tmpDir, ".polybius")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
 
 	configContent := `
 miner_dir = "/custom/miner"
@@ -117,7 +119,9 @@ func TestEnvVarOverrides(t *testing.T) {
 
 	// Create config file with values that will be overridden
 	configDir := filepath.Join(tmpDir, ".polybius")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
 
 	configContent := `
 miner_dir = "/from/file"
@@ -125,7 +129,9 @@ db_path = "/from/file.db"
 cedict_path = "/from/file.u8"
 `
 	configPath := filepath.Join(configDir, "config.toml")
-	os.WriteFile(configPath, []byte(configContent), 0644)
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
 
 	// Set env vars to override
 	os.Setenv("POLYBIUS_MINER_DIR", "/from/env")
@@ -175,7 +181,9 @@ func TestTildeExpansion(t *testing.T) {
 
 	// Create config with tilde paths
 	configDir := filepath.Join(tmpDir, ".polybius")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
 
 	configContent := `
 miner_dir = "~/custom/miner"
@@ -183,7 +191,9 @@ db_path = "~/.custom/brain.db"
 cedict_path = "~/dict/cedict.u8"
 `
 	configPath := filepath.Join(configDir, "config.toml")
-	os.WriteFile(configPath, []byte(configContent), 0644)
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
 
 	cfg, err := Load()
 	if err != nil {

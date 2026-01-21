@@ -188,13 +188,15 @@ func (s *Service) handleNewCapture(jsonPath string) {
 		}
 
 		// Upsert vocabulary entry
-		s.db.UpsertVocabulary(&storage.Vocabulary{
+		if err := s.db.UpsertVocabulary(&storage.Vocabulary{
 			Word:       unknownWord,
 			Pinyin:     pinyin,
 			Definition: definition,
 			Status:     "unknown",
 			TimesSeen:  1,
-		})
+		}); err != nil {
+			log.Printf("Failed to upsert vocabulary: %v", err)
+		}
 
 		// Create draft card (requires triage before entering review queue)
 		card := &storage.Card{

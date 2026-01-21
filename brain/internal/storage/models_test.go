@@ -64,9 +64,15 @@ func TestGetAllCards(t *testing.T) {
 	future := now.Add(3 * time.Hour)
 
 	// Insert cards with various states
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review", DueDate: &future, Stability: 10.0, Difficulty: 0.3})
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word2", State: "learning", Stability: 2.0, Difficulty: 0.5})
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word3", State: "draft"}) // Should be excluded
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review", DueDate: &future, Stability: 10.0, Difficulty: 0.3}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word2", State: "learning", Stability: 2.0, Difficulty: 0.5}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word3", State: "draft"}); err != nil { // Should be excluded
+		t.Fatalf("Failed to insert card: %v", err)
+	}
 
 	cards, err := db.GetAllCards()
 	if err != nil {

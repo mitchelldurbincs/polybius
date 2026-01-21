@@ -38,13 +38,21 @@ func TestGetCardStats(t *testing.T) {
 	tomorrow := now.Add(24 * time.Hour)
 
 	// Card due now
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review", DueDate: &past})
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review", DueDate: &past}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
 	// Card due later today
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word2", State: "review", DueDate: &future})
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word2", State: "review", DueDate: &future}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
 	// Card due tomorrow
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word3", State: "review", DueDate: &tomorrow})
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word3", State: "review", DueDate: &tomorrow}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
 	// Draft card (should not count)
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word4", State: "draft"})
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word4", State: "draft"}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
 
 	stats, err := db.GetCardStats()
 	if err != nil {
@@ -82,7 +90,9 @@ func TestGetNextDueTime(t *testing.T) {
 
 	// Add a card due in the future
 	future := time.Now().Add(3 * time.Hour)
-	db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review", DueDate: &future})
+	if _, err := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review", DueDate: &future}); err != nil {
+		t.Fatalf("Failed to insert card: %v", err)
+	}
 
 	nextDue, err = db.GetNextDueTime()
 	if err != nil {
@@ -109,10 +119,18 @@ func TestGetReviewStats(t *testing.T) {
 	cardID, _ := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review"})
 
 	// Add some reviews
-	db.InsertReview(cardID, 3) // Good
-	db.InsertReview(cardID, 4) // Easy
-	db.InsertReview(cardID, 1) // Again
-	db.InsertReview(cardID, 3) // Good
+	if err := db.InsertReview(cardID, 3); err != nil { // Good
+		t.Fatalf("Failed to insert review: %v", err)
+	}
+	if err := db.InsertReview(cardID, 4); err != nil { // Easy
+		t.Fatalf("Failed to insert review: %v", err)
+	}
+	if err := db.InsertReview(cardID, 1); err != nil { // Again
+		t.Fatalf("Failed to insert review: %v", err)
+	}
+	if err := db.InsertReview(cardID, 3); err != nil { // Good
+		t.Fatalf("Failed to insert review: %v", err)
+	}
 
 	stats, err := db.GetReviewStats(30)
 	if err != nil {
@@ -140,11 +158,17 @@ func TestGetStreak(t *testing.T) {
 	cardID, _ := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review"})
 
 	// Reviews today
-	db.InsertReview(cardID, 3)
+	if err := db.InsertReview(cardID, 3); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
 	// Reviews yesterday (need to insert with specific time)
-	db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour))
+	if err := db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
 	// Reviews 2 days ago
-	db.insertReviewAt(cardID, 3, time.Now().Add(-48*time.Hour))
+	if err := db.insertReviewAt(cardID, 3, time.Now().Add(-48*time.Hour)); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
 
 	streak, err := db.GetStreak()
 	if err != nil {
@@ -168,8 +192,12 @@ func TestGetStreak_NoReviewToday(t *testing.T) {
 	cardID, _ := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review"})
 
 	// NO review today - but reviewed yesterday and day before
-	db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour))
-	db.insertReviewAt(cardID, 3, time.Now().Add(-48*time.Hour))
+	if err := db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
+	if err := db.insertReviewAt(cardID, 3, time.Now().Add(-48*time.Hour)); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
 
 	streak, err := db.GetStreak()
 	if err != nil {
@@ -194,9 +222,15 @@ func TestGetReviewsPerDay(t *testing.T) {
 	cardID, _ := db.InsertCard(&Card{MomentID: momentID, TargetWord: "word1", State: "review"})
 
 	// Add reviews on different days
-	db.InsertReview(cardID, 3)
-	db.InsertReview(cardID, 3)
-	db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour))
+	if err := db.InsertReview(cardID, 3); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
+	if err := db.InsertReview(cardID, 3); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
+	if err := db.insertReviewAt(cardID, 3, time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("Failed to insert review: %v", err)
+	}
 
 	counts, err := db.GetReviewsPerDay(7)
 	if err != nil {
@@ -220,9 +254,15 @@ func TestCountLearnedWords(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Add known words
-	db.UpsertVocabulary(&Vocabulary{Word: "word1", Status: "known"})
-	db.UpsertVocabulary(&Vocabulary{Word: "word2", Status: "known"})
-	db.UpsertVocabulary(&Vocabulary{Word: "word3", Status: "unknown"})
+	if err := db.UpsertVocabulary(&Vocabulary{Word: "word1", Status: "known"}); err != nil {
+		t.Fatalf("Failed to upsert vocabulary: %v", err)
+	}
+	if err := db.UpsertVocabulary(&Vocabulary{Word: "word2", Status: "known"}); err != nil {
+		t.Fatalf("Failed to upsert vocabulary: %v", err)
+	}
+	if err := db.UpsertVocabulary(&Vocabulary{Word: "word3", Status: "unknown"}); err != nil {
+		t.Fatalf("Failed to upsert vocabulary: %v", err)
+	}
 
 	count, err := db.CountLearnedWords()
 	if err != nil {

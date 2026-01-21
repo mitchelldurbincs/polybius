@@ -132,7 +132,9 @@ func (m TriageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Approve current moment
 			if m.cursor < len(m.moments) {
 				moment := m.moments[m.cursor]
-				m.db.ApproveMoment(moment.Moment.ID)
+				if err := m.db.ApproveMoment(moment.Moment.ID); err != nil {
+					log.Printf("Failed to approve moment: %v", err)
+				}
 				// Remove from list
 				m.moments = append(m.moments[:m.cursor], m.moments[m.cursor+1:]...)
 				if m.cursor >= len(m.moments) && m.cursor > 0 {
@@ -144,7 +146,9 @@ func (m TriageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "A":
 			// Approve ALL moments
 			for _, moment := range m.moments {
-				m.db.ApproveMoment(moment.Moment.ID)
+				if err := m.db.ApproveMoment(moment.Moment.ID); err != nil {
+					log.Printf("Failed to approve moment: %v", err)
+				}
 			}
 			m.moments = nil
 			m.cursor = 0
@@ -154,7 +158,9 @@ func (m TriageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Delete current moment
 			if m.cursor < len(m.moments) {
 				moment := m.moments[m.cursor]
-				m.db.DeleteMoment(moment.Moment.ID)
+				if err := m.db.DeleteMoment(moment.Moment.ID); err != nil {
+					log.Printf("Failed to delete moment: %v", err)
+				}
 				// Remove from list
 				m.moments = append(m.moments[:m.cursor], m.moments[m.cursor+1:]...)
 				if m.cursor >= len(m.moments) && m.cursor > 0 {

@@ -45,7 +45,9 @@ func main() {
 
 func runBrain(cfg *config.Config) {
 	// Ensure directories exist
-	os.MkdirAll(filepath.Dir(cfg.DBPath), 0755)
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0755); err != nil {
+		log.Fatalf("Failed to create directory: %v", err)
+	}
 
 	brainCfg := brain.Config{
 		DBPath:     cfg.DBPath,
@@ -116,7 +118,9 @@ func runGym(cfg *config.Config) {
 func runTriage(db *storage.DB) {
 	triageModel := gym.NewTriageModel(db)
 	p := tea.NewProgram(triageModel)
-	p.Run()
+	if _, err := p.Run(); err != nil {
+		log.Printf("Error running triage: %v", err)
+	}
 }
 
 func runReview(db *storage.DB, session *gym.Session) {
@@ -138,7 +142,9 @@ func runReview(db *storage.DB, session *gym.Session) {
 
 	model := gym.NewModel(cards, onRate)
 	p := tea.NewProgram(model)
-	p.Run()
+	if _, err := p.Run(); err != nil {
+		log.Printf("Error running review: %v", err)
+	}
 }
 
 func runCardsList(session *gym.Session) {
@@ -150,7 +156,9 @@ func runCardsList(session *gym.Session) {
 
 	model := gym.NewCardsModel(cards)
 	p := tea.NewProgram(model)
-	p.Run()
+	if _, err := p.Run(); err != nil {
+		log.Printf("Error running cards list: %v", err)
+	}
 }
 
 func runVocab(cfg *config.Config) {
@@ -177,7 +185,9 @@ func runVocabImport(cfg *config.Config) {
 	filePath := os.Args[3]
 
 	// Ensure directory exists
-	os.MkdirAll(filepath.Dir(cfg.DBPath), 0755)
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0755); err != nil {
+		log.Fatalf("Failed to create directory: %v", err)
+	}
 
 	db, err := storage.OpenDatabase(cfg.DBPath)
 	if err != nil {
