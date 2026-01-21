@@ -1,6 +1,6 @@
 # Polybius
 
-## The Problem
+## The Problem 
 
 Most language learning apps (Skritter, Duolingo) teach vocabulary in a vacuum. You learn that `对` means "Correct," but you miss the emotion, speed, and slur of a native speaker screaming it in a movie.
 
