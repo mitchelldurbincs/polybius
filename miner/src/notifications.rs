@@ -23,7 +23,10 @@ fn filename_or_default(path: &Path, default: &str) -> String {
 /// Send a notification that audio was saved
 pub fn notify_save_complete(path: &Path, duration_secs: f32) {
     let filename = filename_or_default(path, "audio.wav");
-    show_notification("Audio Saved", &format!("Saved {:.1}s to {}", duration_secs, filename));
+    show_notification(
+        "Audio Saved",
+        &format!("Saved {:.1}s to {}", duration_secs, filename),
+    );
 }
 
 /// Send an error notification
@@ -34,10 +37,16 @@ pub fn notify_error(message: &str) {
 /// Send a notification that a screenshot was saved
 pub fn notify_screenshot_saved(path: &Path) {
     let filename = filename_or_default(path, "screenshot.png");
-    show_notification("Screenshot Saved", &format!("Saved {} (copied to clipboard)", filename));
+    show_notification(
+        "Screenshot Saved",
+        &format!("Saved {} (copied to clipboard)", filename),
+    );
 }
 
 /// Send a notification that a region was saved
 pub fn notify_region_saved(window_title: &str) {
-    show_notification("Region Saved", &format!("Region set for '{}'", window_title));
+    show_notification(
+        "Region Saved",
+        &format!("Region set for '{}'", window_title),
+    );
 }

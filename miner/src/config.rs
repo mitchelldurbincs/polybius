@@ -144,7 +144,6 @@ fn default_ocr_language() -> String {
     "en-US".to_string()
 }
 
-
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
