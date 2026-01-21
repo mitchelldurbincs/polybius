@@ -40,12 +40,14 @@ type MomentWithCards struct {
 }
 
 type TriageModel struct {
-	db          *storage.DB
-	moments     []*MomentWithCards
-	cursor      int
-	expanded    map[int64]bool
-	startReview bool
-	quitting    bool
+	db           *storage.DB
+	moments      []*MomentWithCards
+	cursor       int
+	expanded     map[int64]bool
+	startReview  bool
+	quitting     bool
+	loadErrors   int // Track how many moments failed to load cards
+	totalMoments int // Total moments attempted to load
 }
 
 func NewTriageModel(db *storage.DB) TriageModel {
@@ -59,34 +61,45 @@ func (m TriageModel) Init() tea.Cmd {
 	return m.loadDrafts
 }
 
+// triageLoadResult carries loaded moments plus any error information
+type triageLoadResult struct {
+	moments      []*MomentWithCards
+	loadErrors   int
+	totalMoments int
+}
+
 func (m TriageModel) loadDrafts() tea.Msg {
 	moments, err := m.db.GetDraftMoments()
 	if err != nil {
 		return err
 	}
 
-	var momentsWithCards []*MomentWithCards
+	result := triageLoadResult{
+		totalMoments: len(moments),
+	}
+
 	for _, moment := range moments {
 		cards, err := m.db.GetDraftCardsByMoment(moment.ID)
 		if err != nil {
 			log.Printf("Warning: failed to load cards for moment %d: %v", moment.ID, err)
+			result.loadErrors++
 			continue
 		}
-		momentsWithCards = append(momentsWithCards, &MomentWithCards{
+		result.moments = append(result.moments, &MomentWithCards{
 			Moment: moment,
 			Cards:  cards,
 		})
 	}
 
-	return momentsWithCards
+	return result
 }
-
-type loadedMsg []*MomentWithCards
 
 func (m TriageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case []*MomentWithCards:
-		m.moments = msg
+	case triageLoadResult:
+		m.moments = msg.moments
+		m.loadErrors = msg.loadErrors
+		m.totalMoments = msg.totalMoments
 		return m, nil
 
 	case tea.KeyMsg:
@@ -176,7 +189,15 @@ func (m TriageModel) View() string {
 	// Header
 	header := triageTitleStyle.Render("TRIAGE")
 	stats := statsStyle.Render(fmt.Sprintf("Draft: %d cards in %d moments", draftCount, len(m.moments)))
-	sb.WriteString(fmt.Sprintf("%s    %s\n\n", header, stats))
+	sb.WriteString(fmt.Sprintf("%s    %s", header, stats))
+
+	// Show load errors if any
+	if m.loadErrors > 0 {
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+		sb.WriteString("    ")
+		sb.WriteString(errorStyle.Render(fmt.Sprintf("(%d failed to load)", m.loadErrors)))
+	}
+	sb.WriteString("\n\n")
 
 	if len(m.moments) == 0 {
 		sb.WriteString("No drafts to triage. All captures have been processed.\n\n")

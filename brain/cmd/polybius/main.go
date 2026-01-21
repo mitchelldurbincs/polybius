@@ -100,12 +100,20 @@ func runGym(cfg *config.Config) {
 
 	// Start review session
 	session := gym.NewSession(db)
-	cards, err := session.GetDueCards(20)
+	result, err := session.GetDueCardsWithInfo(20)
 	if err != nil {
 		log.Fatalf("Failed to get cards: %v", err)
 	}
 
-	if len(cards) == 0 {
+	// Warn user about skipped cards
+	if result.SkippedMoment > 0 {
+		fmt.Printf("Warning: %d card(s) skipped (moment data unavailable)\n", result.SkippedMoment)
+	}
+	if result.SkippedMissing > 0 {
+		fmt.Printf("Warning: %d card(s) skipped (audio file missing)\n", result.SkippedMissing)
+	}
+
+	if len(result.Cards) == 0 {
 		fmt.Println("No cards due for review. Great job!")
 		return
 	}
@@ -115,7 +123,7 @@ func runGym(cfg *config.Config) {
 		return session.SubmitRating(cardID, rating)
 	}
 
-	model := gym.NewModel(cards, onRate)
+	model := gym.NewModel(result.Cards, onRate)
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {

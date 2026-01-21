@@ -94,6 +94,7 @@ mod windows_impl {
 
     struct OverlayState {
         screenshot: Screenshot,
+        #[allow(dead_code)] // Stored for potential future use (e.g., displaying window title)
         window_info: WindowInfo,
         is_selecting: bool,
         start_x: i32,
@@ -103,7 +104,9 @@ mod windows_impl {
         result: Option<RegionSelectionResult>,
         hdc_mem: HDC,
         hdc_dark: HDC,
+        #[allow(dead_code)] // Handle must be kept alive while hdc_mem is in use
         hbm_screenshot: HBITMAP,
+        #[allow(dead_code)] // Handle must be kept alive while hdc_dark is in use
         hbm_darkened: HBITMAP,
     }
 
@@ -198,7 +201,7 @@ mod windows_impl {
             FillRect(hdc, border, brush);
         }
 
-        DeleteObject(brush);
+        let _ = DeleteObject(brush);
     }
 
     // ============================================================
@@ -278,7 +281,7 @@ mod windows_impl {
                 hinstance,
                 None,
             )?;
-            ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_SHOW);
 
             // Run message loop until window closes
             let mut msg = MSG::default();
@@ -288,10 +291,10 @@ mod windows_impl {
             }
 
             // Cleanup GDI resources
-            DeleteDC(hdc_mem);
-            DeleteDC(hdc_dark);
-            DeleteObject(hbm_screenshot);
-            DeleteObject(hbm_darkened);
+            let _ = DeleteDC(hdc_mem);
+            let _ = DeleteDC(hdc_dark);
+            let _ = DeleteObject(hbm_screenshot);
+            let _ = DeleteObject(hbm_darkened);
 
             // Extract result
             let result = OVERLAY_STATE.with(|state| {
@@ -337,7 +340,7 @@ mod windows_impl {
             let Some(ref state) = *state_ref else { return };
 
             let mut rect = RECT::default();
-            GetClientRect(hwnd, &mut rect);
+            let _ = GetClientRect(hwnd, &mut rect);
             let win_size = (rect.right - rect.left, rect.bottom - rect.top);
             let img_size = (state.screenshot.width as i32, state.screenshot.height as i32);
 
@@ -347,7 +350,7 @@ mod windows_impl {
             SelectObject(hdc_temp, hbm_temp);
 
             // Draw darkened screenshot as base
-            windows::Win32::Graphics::Gdi::StretchBlt(
+            let _ = windows::Win32::Graphics::Gdi::StretchBlt(
                 hdc_temp, 0, 0, win_size.0, win_size.1,
                 state.hdc_dark, 0, 0, img_size.0, img_size.1,
                 SRCCOPY,
@@ -366,7 +369,7 @@ mod windows_impl {
                 let src_h = (sel.height() as f64 * scale_y) as i32;
 
                 // Draw original (bright) region over darkened base
-                windows::Win32::Graphics::Gdi::StretchBlt(
+                let _ = windows::Win32::Graphics::Gdi::StretchBlt(
                     hdc_temp, sel.left, sel.top, sel.width() as i32, sel.height() as i32,
                     state.hdc_mem, src_x, src_y, src_w, src_h,
                     SRCCOPY,
@@ -376,13 +379,13 @@ mod windows_impl {
             }
 
             // Blit composited result to screen
-            BitBlt(hdc, 0, 0, win_size.0, win_size.1, hdc_temp, 0, 0, SRCCOPY);
+            let _ = BitBlt(hdc, 0, 0, win_size.0, win_size.1, hdc_temp, 0, 0, SRCCOPY);
 
-            DeleteDC(hdc_temp);
-            DeleteObject(hbm_temp);
+            let _ = DeleteDC(hdc_temp);
+            let _ = DeleteObject(hbm_temp);
         });
 
-        EndPaint(hwnd, &ps);
+        let _ = EndPaint(hwnd, &ps);
         LRESULT(0)
     }
 
@@ -410,7 +413,7 @@ mod windows_impl {
                 if state.is_selecting {
                     state.current_x = x;
                     state.current_y = y;
-                    InvalidateRect(hwnd, None, false);
+                    let _ = InvalidateRect(hwnd, None, false);
                 }
             }
         });
@@ -439,7 +442,7 @@ mod windows_impl {
                         state.result = Some(RegionSelectionResult::Cancelled);
                     }
                 });
-                DestroyWindow(hwnd);
+                let _ = DestroyWindow(hwnd);
             }
             VK_RETURN => {
                 OVERLAY_STATE.with(|state| {
@@ -461,13 +464,13 @@ mod windows_impl {
         }
 
         let mut rect = RECT::default();
-        GetClientRect(hwnd, &mut rect);
+        let _ = GetClientRect(hwnd, &mut rect);
         let win_size = (rect.right - rect.left, rect.bottom - rect.top);
         let img_size = (state.screenshot.width, state.screenshot.height);
 
         let region = sel.to_capture_region(win_size, img_size);
         state.result = Some(RegionSelectionResult::Selected(region));
-        DestroyWindow(hwnd);
+        let _ = DestroyWindow(hwnd);
     }
 }
 

@@ -191,7 +191,7 @@ impl HotkeyManager {
 }
 
 /// Parse a hotkey string like "CTRL+ALT+1" into a HotKey
-fn parse_hotkey(s: &str) -> Result<HotKey, String> {
+pub fn parse_hotkey(s: &str) -> Result<HotKey, String> {
     let parts: Vec<String> = s.split('+').map(|p| p.trim().to_uppercase()).collect();
 
     if parts.is_empty() {
@@ -225,7 +225,7 @@ fn parse_hotkey(s: &str) -> Result<HotKey, String> {
 }
 
 /// Parse a key code string into a Code
-fn parse_key_code(s: &str) -> Result<Code, String> {
+pub fn parse_key_code(s: &str) -> Result<Code, String> {
     // Handle single characters
     if s.len() == 1 {
         let c = s.chars().next().unwrap();

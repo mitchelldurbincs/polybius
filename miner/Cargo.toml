@@ -42,6 +42,9 @@ windows = { version = "0.58", features = [
 # [target.'cfg(not(windows))'.dependencies]
 # screenshots = "0.8"
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 opt-level = 3
 lto = true

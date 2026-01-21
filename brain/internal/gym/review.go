@@ -2,6 +2,7 @@
 package gym
 
 import (
+	"os"
 	"time"
 
 	"github.com/mitchelldurbin/polybius/brain/internal/fsrs"
@@ -33,20 +34,54 @@ func NewSession(db *storage.DB) *Session {
 	}
 }
 
+// DueCardsResult contains the review cards and any skip information
+type DueCardsResult struct {
+	Cards           []*ReviewCard
+	SkippedMoment   int // Cards skipped because moment couldn't be loaded
+	SkippedMissing  int // Cards skipped because audio file is missing
+}
+
+// fileExists checks if a file exists and is not a directory
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
 func (s *Session) GetDueCards(limit int) ([]*ReviewCard, error) {
+	result, err := s.GetDueCardsWithInfo(limit)
+	if err != nil {
+		return nil, err
+	}
+	return result.Cards, nil
+}
+
+func (s *Session) GetDueCardsWithInfo(limit int) (*DueCardsResult, error) {
 	cards, err := s.store.GetDueCards(limit)
 	if err != nil {
 		return nil, err
 	}
 
-	var reviewCards []*ReviewCard
+	result := &DueCardsResult{}
 	for _, c := range cards {
 		moment, err := s.store.GetMoment(c.MomentID)
 		if err != nil {
+			result.SkippedMoment++
 			continue
 		}
 
-		reviewCards = append(reviewCards, &ReviewCard{
+		// Validate that audio file exists (required for review)
+		if !fileExists(moment.AudioFile) {
+			result.SkippedMissing++
+			continue
+		}
+
+		result.Cards = append(result.Cards, &ReviewCard{
 			ID:         c.ID,
 			Sentence:   moment.RawText,
 			TargetWord: c.TargetWord,
@@ -57,7 +92,7 @@ func (s *Session) GetDueCards(limit int) ([]*ReviewCard, error) {
 		})
 	}
 
-	return reviewCards, nil
+	return result, nil
 }
 
 func (s *Session) SubmitRating(cardID int64, rating int) error {

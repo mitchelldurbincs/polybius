@@ -9,32 +9,26 @@
 //! - Ctrl+Alt+2: Save last 30 seconds
 //! - Ctrl+Alt+3: Save last 60 seconds
 
-mod audio;
-mod clipboard;
-mod config;
-mod hotkeys;
-mod metadata;
-mod notifications;
-mod ocr;
-mod region_overlay;
-mod screenshot;
-mod tray;
-mod vision;
-mod wav;
-mod window_utils;
-
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use tray_icon::menu::MenuEvent;
 
-use audio::{AudioCapture, BufferDuration};
-use config::Config;
-use hotkeys::{HotkeyAction, HotkeyManager};
-use screenshot::Screenshot;
-use tray::TrayManager;
-use vision::VisionCapture;
+use miner::{
+    audio::AudioCapture,
+    clipboard,
+    config::Config,
+    hotkeys::{HotkeyAction, HotkeyManager},
+    notifications,
+    region_overlay,
+    screenshot::Screenshot,
+    tray::{self, TrayManager},
+    vision::VisionCapture,
+    wav,
+    window_utils,
+    BufferDuration,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("The Miner v0.4.0 - Stage 4 (Vision Module)");
