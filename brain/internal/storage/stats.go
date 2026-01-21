@@ -227,7 +227,7 @@ func (db *DB) GetReviewsPerDay(days int) ([]int, error) {
 	today := time.Now()
 	for i := 0; i < days; i++ {
 		// i=0 is (days-1) days ago, i=(days-1) is today
-		date := today.AddDate(0, 0, -(days-1-i)).Format("2006-01-02")
+		date := today.AddDate(0, 0, -(days - 1 - i)).Format("2006-01-02")
 		counts[i] = reviewCounts[date]
 	}
 

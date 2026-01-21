@@ -22,7 +22,6 @@ const (
 	ActionQuit
 )
 
-
 // HomeStats contains all statistics displayed on the home screen
 type HomeStats struct {
 	DueNow        int

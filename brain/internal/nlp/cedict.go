@@ -92,9 +92,9 @@ func (d *CEDICT) LookupWithFallback(word string) (*DictEntry, bool) {
 	}
 
 	return &DictEntry{
-		Simplified:  word,
-		Pinyin:      strings.Join(pinyins, " "),
-		Definition:  strings.Join(defs, "; "),
+		Simplified: word,
+		Pinyin:     strings.Join(pinyins, " "),
+		Definition: strings.Join(defs, "; "),
 	}, true
 }
 

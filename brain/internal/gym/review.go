@@ -36,9 +36,9 @@ func NewSession(db *storage.DB) *Session {
 
 // DueCardsResult contains the review cards and any skip information
 type DueCardsResult struct {
-	Cards           []*ReviewCard
-	SkippedMoment   int // Cards skipped because moment couldn't be loaded
-	SkippedMissing  int // Cards skipped because audio file is missing
+	Cards          []*ReviewCard
+	SkippedMoment  int // Cards skipped because moment couldn't be loaded
+	SkippedMissing int // Cards skipped because audio file is missing
 }
 
 // fileExists checks if a file exists and is not a directory

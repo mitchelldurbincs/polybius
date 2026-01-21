@@ -75,7 +75,7 @@ var (
 var (
 	// BoxStyle for bordered content boxes
 	BoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1).
-			Width(30)
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Width(30)
 )
