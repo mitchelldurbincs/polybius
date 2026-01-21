@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mitchelldurbin/polybius/brain/internal/brain"
@@ -77,58 +78,79 @@ func runGym(cfg *config.Config) {
 	}
 	defer db.Close()
 
-	// Check for drafts first - show triage if any exist
-	draftCount, err := db.CountDraftCards()
-	if err != nil {
-		log.Printf("Warning: failed to count draft cards: %v", err)
-		draftCount = 0
-	}
-	if draftCount > 0 {
-		triageModel := gym.NewTriageModel(db)
-		p := tea.NewProgram(triageModel)
+	session := gym.NewSession(db)
 
+	for {
+		// Load stats and show home screen
+		stats, err := session.LoadHomeStats()
+		if err != nil {
+			log.Fatalf("Failed to load stats: %v", err)
+		}
+
+		homeModel := gym.NewHomeModel(stats)
+		p := tea.NewProgram(homeModel)
 		finalModel, err := p.Run()
 		if err != nil {
-			log.Fatalf("Error running triage: %v", err)
+			log.Fatalf("Error running home screen: %v", err)
 		}
 
-		// Check if user wants to continue to review
-		if tm, ok := finalModel.(gym.TriageModel); ok && !tm.StartReview() {
-			return // User quit without wanting review
+		hm := finalModel.(gym.HomeModel)
+		action := hm.Action()
+
+		switch action {
+		case gym.ActionQuit:
+			return
+
+		case gym.ActionTriage:
+			runTriage(db)
+
+		case gym.ActionReview:
+			runReview(db, session)
+
+		case gym.ActionCards:
+			runCardsList(session)
 		}
 	}
+}
 
-	// Start review session
-	session := gym.NewSession(db)
-	result, err := session.GetDueCardsWithInfo(20)
+func runTriage(db *storage.DB) {
+	triageModel := gym.NewTriageModel(db)
+	p := tea.NewProgram(triageModel)
+	p.Run()
+}
+
+func runReview(db *storage.DB, session *gym.Session) {
+	cards, err := session.GetDueCards(20)
 	if err != nil {
-		log.Fatalf("Failed to get cards: %v", err)
-	}
-
-	// Warn user about skipped cards
-	if result.SkippedMoment > 0 {
-		fmt.Printf("Warning: %d card(s) skipped (moment data unavailable)\n", result.SkippedMoment)
-	}
-	if result.SkippedMissing > 0 {
-		fmt.Printf("Warning: %d card(s) skipped (audio file missing)\n", result.SkippedMissing)
-	}
-
-	if len(result.Cards) == 0 {
-		fmt.Println("No cards due for review. Great job!")
+		log.Printf("Failed to get cards: %v", err)
 		return
 	}
 
-	// Create rating callback
+	if len(cards) == 0 {
+		fmt.Println("No cards due for review.")
+		time.Sleep(1 * time.Second)
+		return
+	}
+
 	onRate := func(cardID int64, rating int) error {
 		return session.SubmitRating(cardID, rating)
 	}
 
-	model := gym.NewModel(result.Cards, onRate)
+	model := gym.NewModel(cards, onRate)
 	p := tea.NewProgram(model)
+	p.Run()
+}
 
-	if _, err := p.Run(); err != nil {
-		log.Fatalf("Error running TUI: %v", err)
+func runCardsList(session *gym.Session) {
+	cards, err := session.GetAllCardsForList()
+	if err != nil {
+		log.Printf("Failed to get cards: %v", err)
+		return
 	}
+
+	model := gym.NewCardsModel(cards)
+	p := tea.NewProgram(model)
+	p.Run()
 }
 
 func runVocab(cfg *config.Config) {

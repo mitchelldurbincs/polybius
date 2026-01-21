@@ -159,3 +159,104 @@ func intToCardState(state int) string {
 		return "new"
 	}
 }
+
+// HomeStatsStore abstracts database operations for home screen stats
+type HomeStatsStore interface {
+	GetCardStats() (*storage.CardStats, error)
+	GetNextDueTime() (*time.Time, error)
+	GetReviewStats(days int) (*storage.ReviewStats, error)
+	GetStreak() (int, error)
+	GetReviewsPerDay(days int) ([]int, error)
+	CountLearnedWords() (int, error)
+	CountDraftCards() (int, error)
+}
+
+// LoadHomeStats loads all statistics needed for the home screen
+func (s *Session) LoadHomeStats() (*HomeStats, error) {
+	store := s.store.(HomeStatsStore)
+
+	cardStats, err := store.GetCardStats()
+	if err != nil {
+		return nil, err
+	}
+
+	nextDue, err := store.GetNextDueTime()
+	if err != nil {
+		return nil, err
+	}
+
+	reviewStats, err := store.GetReviewStats(30)
+	if err != nil {
+		return nil, err
+	}
+
+	streak, err := store.GetStreak()
+	if err != nil {
+		return nil, err
+	}
+
+	last7Days, err := store.GetReviewsPerDay(7)
+	if err != nil {
+		return nil, err
+	}
+
+	wordsLearned, err := store.CountLearnedWords()
+	if err != nil {
+		return nil, err
+	}
+
+	draftCount, err := store.CountDraftCards()
+	if err != nil {
+		return nil, err
+	}
+
+	return &HomeStats{
+		DueNow:        cardStats.DueNow,
+		DueToday:      cardStats.DueToday,
+		TotalCards:    cardStats.TotalCards,
+		NextDue:       nextDue,
+		WordsLearned:  wordsLearned,
+		RetentionRate: reviewStats.RetentionRate,
+		ReviewsToday:  reviewStats.ReviewsToday,
+		Streak:        streak,
+		Last7Days:     last7Days,
+		DraftCount:    draftCount,
+	}, nil
+}
+
+// GetAllCardsForList returns cards formatted for the cards list view
+func (s *Session) GetAllCardsForList() ([]*CardListItem, error) {
+	type allCardsStore interface {
+		GetAllCards() ([]*storage.Card, error)
+		GetMoment(id int64) (*storage.Moment, error)
+	}
+
+	store := s.store.(allCardsStore)
+
+	cards, err := store.GetAllCards()
+	if err != nil {
+		return nil, err
+	}
+
+	var items []*CardListItem
+	for _, c := range cards {
+		moment, err := store.GetMoment(c.MomentID)
+		sentence := ""
+		if err == nil {
+			sentence = moment.RawText
+		}
+
+		items = append(items, &CardListItem{
+			ID:         c.ID,
+			TargetWord: c.TargetWord,
+			Sentence:   sentence,
+			DueDate:    c.DueDate,
+			Stability:  c.Stability,
+			Difficulty: c.Difficulty,
+			Reps:       c.Reps,
+			State:      c.State,
+		})
+	}
+
+	return items, nil
+}
