@@ -14,7 +14,9 @@ impl std::fmt::Display for ClipboardError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClipboardError::OpenFailed(msg) => write!(f, "Failed to open clipboard: {}", msg),
-            ClipboardError::SetDataFailed(msg) => write!(f, "Failed to set clipboard data: {}", msg),
+            ClipboardError::SetDataFailed(msg) => {
+                write!(f, "Failed to set clipboard data: {}", msg)
+            }
             ClipboardError::MemoryError(msg) => write!(f, "Memory error: {}", msg),
             ClipboardError::NotSupported => write!(f, "Clipboard not supported on this platform"),
         }
@@ -52,13 +54,17 @@ mod windows_impl {
         unsafe {
             // Open clipboard
             if OpenClipboard(None).is_err() {
-                return Err(ClipboardError::OpenFailed("OpenClipboard failed".to_string()));
+                return Err(ClipboardError::OpenFailed(
+                    "OpenClipboard failed".to_string(),
+                ));
             }
 
             // Empty clipboard
             if EmptyClipboard().is_err() {
                 CloseClipboard().ok();
-                return Err(ClipboardError::SetDataFailed("EmptyClipboard failed".to_string()));
+                return Err(ClipboardError::SetDataFailed(
+                    "EmptyClipboard failed".to_string(),
+                ));
             }
 
             // Allocate global memory
@@ -123,7 +129,9 @@ mod windows_impl {
             CloseClipboard().ok();
 
             if result.is_err() {
-                return Err(ClipboardError::SetDataFailed("SetClipboardData failed".to_string()));
+                return Err(ClipboardError::SetDataFailed(
+                    "SetClipboardData failed".to_string(),
+                ));
             }
 
             Ok(())

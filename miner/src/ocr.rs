@@ -147,8 +147,8 @@ impl OcrProcessor {
     }
 
     fn process_windows(&self, screenshot: &Screenshot) -> Result<OcrResult, OcrError> {
-        use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
         use windows::core::Interface;
+        use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
         use windows::Storage::Streams::Buffer;
 
         // Create a SoftwareBitmap from the screenshot data

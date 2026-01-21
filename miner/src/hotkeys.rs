@@ -101,7 +101,10 @@ impl HotkeyManager {
         let hotkey_screenshot = match parse_hotkey(hotkey_screenshot_str) {
             Ok(hk) => {
                 manager.register(hk)?;
-                println!("[OK] Registered hotkey: {} (screenshot)", hotkey_screenshot_str);
+                println!(
+                    "[OK] Registered hotkey: {} (screenshot)",
+                    hotkey_screenshot_str
+                );
                 Some((hk, hk.id()))
             }
             Err(e) => {
@@ -117,7 +120,10 @@ impl HotkeyManager {
         let hotkey_region = match parse_hotkey(hotkey_region_str) {
             Ok(hk) => {
                 manager.register(hk)?;
-                println!("[OK] Registered hotkey: {} (region select)", hotkey_region_str);
+                println!(
+                    "[OK] Registered hotkey: {} (region select)",
+                    hotkey_region_str
+                );
                 Some((hk, hk.id()))
             }
             Err(e) => {

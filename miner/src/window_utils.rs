@@ -76,11 +76,7 @@ mod windows_impl {
         let windows = window_list().map_err(|e| format!("Failed to get window list: {:?}", e))?;
 
         for window in windows {
-            if window
-                .window_name
-                .to_lowercase()
-                .contains(&pattern_lower)
-            {
+            if window.window_name.to_lowercase().contains(&pattern_lower) {
                 let hwnd = HWND(window.hwnd as *mut _);
                 return get_window_info(hwnd);
             }

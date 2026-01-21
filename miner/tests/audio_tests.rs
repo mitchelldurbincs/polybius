@@ -160,12 +160,17 @@ fn test_buffer_size_calculation() {
         channels: 2,
     };
 
-    let buffer_size_5s = format.sample_rate as usize * format.channels as usize * BufferDuration::Seconds5.as_secs();
-    let buffer_size_10s = format.sample_rate as usize * format.channels as usize * BufferDuration::Seconds10.as_secs();
-    let buffer_size_15s = format.sample_rate as usize * format.channels as usize * BufferDuration::Seconds15.as_secs();
+    let buffer_size_5s =
+        format.sample_rate as usize * format.channels as usize * BufferDuration::Seconds5.as_secs();
+    let buffer_size_10s = format.sample_rate as usize
+        * format.channels as usize
+        * BufferDuration::Seconds10.as_secs();
+    let buffer_size_15s = format.sample_rate as usize
+        * format.channels as usize
+        * BufferDuration::Seconds15.as_secs();
 
-    assert_eq!(buffer_size_5s, 480000);   // 48000 * 2 * 5
-    assert_eq!(buffer_size_10s, 960000);  // 48000 * 2 * 10
+    assert_eq!(buffer_size_5s, 480000); // 48000 * 2 * 5
+    assert_eq!(buffer_size_10s, 960000); // 48000 * 2 * 10
     assert_eq!(buffer_size_15s, 1440000); // 48000 * 2 * 15
 }
 

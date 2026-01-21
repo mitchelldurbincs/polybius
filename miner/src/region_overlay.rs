@@ -26,8 +26,8 @@ mod windows_impl {
     use windows::Win32::Graphics::Gdi::{
         BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
         DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC, SelectObject,
-        SetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HBITMAP,
-        PAINTSTRUCT, SRCCOPY,
+        SetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC, PAINTSTRUCT,
+        SRCCOPY,
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -79,7 +79,11 @@ mod windows_impl {
         }
 
         /// Scale selection from window coordinates to image coordinates
-        fn to_capture_region(&self, window_size: (i32, i32), image_size: (u32, u32)) -> CaptureRegion {
+        fn to_capture_region(
+            &self,
+            window_size: (i32, i32),
+            image_size: (u32, u32),
+        ) -> CaptureRegion {
             let scale_x = image_size.0 as f64 / window_size.0 as f64;
             let scale_y = image_size.1 as f64 / window_size.1 as f64;
 
@@ -191,10 +195,30 @@ mod windows_impl {
 
         // Top, bottom, left, right borders
         let borders = [
-            RECT { left: sel.left - bw, top: sel.top - bw, right: sel.right + bw, bottom: sel.top },
-            RECT { left: sel.left - bw, top: sel.bottom, right: sel.right + bw, bottom: sel.bottom + bw },
-            RECT { left: sel.left - bw, top: sel.top, right: sel.left, bottom: sel.bottom },
-            RECT { left: sel.right, top: sel.top, right: sel.right + bw, bottom: sel.bottom },
+            RECT {
+                left: sel.left - bw,
+                top: sel.top - bw,
+                right: sel.right + bw,
+                bottom: sel.top,
+            },
+            RECT {
+                left: sel.left - bw,
+                top: sel.bottom,
+                right: sel.right + bw,
+                bottom: sel.bottom + bw,
+            },
+            RECT {
+                left: sel.left - bw,
+                top: sel.top,
+                right: sel.left,
+                bottom: sel.bottom,
+            },
+            RECT {
+                left: sel.right,
+                top: sel.top,
+                right: sel.right + bw,
+                bottom: sel.bottom,
+            },
         ];
 
         for border in &borders {
@@ -235,8 +259,16 @@ mod windows_impl {
             let hdc_screen = GetDC(None);
             let hdc_mem = CreateCompatibleDC(hdc_screen);
             let hdc_dark = CreateCompatibleDC(hdc_screen);
-            let hbm_screenshot = CreateCompatibleBitmap(hdc_screen, screenshot.width as i32, screenshot.height as i32);
-            let hbm_darkened = CreateCompatibleBitmap(hdc_screen, screenshot.width as i32, screenshot.height as i32);
+            let hbm_screenshot = CreateCompatibleBitmap(
+                hdc_screen,
+                screenshot.width as i32,
+                screenshot.height as i32,
+            );
+            let hbm_darkened = CreateCompatibleBitmap(
+                hdc_screen,
+                screenshot.width as i32,
+                screenshot.height as i32,
+            );
             SelectObject(hdc_mem, hbm_screenshot);
             SelectObject(hdc_dark, hbm_darkened);
 
@@ -244,8 +276,24 @@ mod windows_impl {
             let (bgr_original, bgr_darkened) = convert_rgba_to_bgr(&screenshot);
             let bmi = create_bitmap_info(screenshot.width, screenshot.height);
 
-            SetDIBits(hdc_mem, hbm_screenshot, 0, screenshot.height, bgr_original.as_ptr() as *const _, &bmi, DIB_RGB_COLORS);
-            SetDIBits(hdc_dark, hbm_darkened, 0, screenshot.height, bgr_darkened.as_ptr() as *const _, &bmi, DIB_RGB_COLORS);
+            SetDIBits(
+                hdc_mem,
+                hbm_screenshot,
+                0,
+                screenshot.height,
+                bgr_original.as_ptr() as *const _,
+                &bmi,
+                DIB_RGB_COLORS,
+            );
+            SetDIBits(
+                hdc_dark,
+                hbm_darkened,
+                0,
+                screenshot.height,
+                bgr_darkened.as_ptr() as *const _,
+                &bmi,
+                DIB_RGB_COLORS,
+            );
             ReleaseDC(None, hdc_screen);
 
             // Store state for window_proc callbacks
@@ -298,7 +346,9 @@ mod windows_impl {
 
             // Extract result
             let result = OVERLAY_STATE.with(|state| {
-                state.borrow_mut().take()
+                state
+                    .borrow_mut()
+                    .take()
                     .and_then(|s| s.result)
                     .unwrap_or(RegionSelectionResult::Cancelled)
             });
@@ -342,7 +392,10 @@ mod windows_impl {
             let mut rect = RECT::default();
             let _ = GetClientRect(hwnd, &mut rect);
             let win_size = (rect.right - rect.left, rect.bottom - rect.top);
-            let img_size = (state.screenshot.width as i32, state.screenshot.height as i32);
+            let img_size = (
+                state.screenshot.width as i32,
+                state.screenshot.height as i32,
+            );
 
             // Create temp DC for compositing
             let hdc_temp = CreateCompatibleDC(hdc);
@@ -351,8 +404,16 @@ mod windows_impl {
 
             // Draw darkened screenshot as base
             let _ = windows::Win32::Graphics::Gdi::StretchBlt(
-                hdc_temp, 0, 0, win_size.0, win_size.1,
-                state.hdc_dark, 0, 0, img_size.0, img_size.1,
+                hdc_temp,
+                0,
+                0,
+                win_size.0,
+                win_size.1,
+                state.hdc_dark,
+                0,
+                0,
+                img_size.0,
+                img_size.1,
                 SRCCOPY,
             );
 
@@ -370,8 +431,16 @@ mod windows_impl {
 
                 // Draw original (bright) region over darkened base
                 let _ = windows::Win32::Graphics::Gdi::StretchBlt(
-                    hdc_temp, sel.left, sel.top, sel.width() as i32, sel.height() as i32,
-                    state.hdc_mem, src_x, src_y, src_w, src_h,
+                    hdc_temp,
+                    sel.left,
+                    sel.top,
+                    sel.width() as i32,
+                    sel.height() as i32,
+                    state.hdc_mem,
+                    src_x,
+                    src_y,
+                    src_w,
+                    src_h,
                     SRCCOPY,
                 );
 

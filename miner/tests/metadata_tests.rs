@@ -23,7 +23,8 @@ fn test_card_metadata_new() {
 
 #[test]
 fn test_card_metadata_with_screenshot() {
-    let meta = CardMetadata::new("audio.wav", 10.0, 44100, 2).with_screenshot("shot.png", 1920, 1080);
+    let meta =
+        CardMetadata::new("audio.wav", 10.0, 44100, 2).with_screenshot("shot.png", 1920, 1080);
 
     assert!(meta.screenshot.is_some());
     let screenshot = meta.screenshot.unwrap();

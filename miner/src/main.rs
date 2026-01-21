@@ -20,14 +20,11 @@ use miner::{
     clipboard,
     config::Config,
     hotkeys::{HotkeyAction, HotkeyManager},
-    notifications,
-    region_overlay,
+    notifications, region_overlay,
     screenshot::Screenshot,
     tray::{self, TrayManager},
     vision::VisionCapture,
-    wav,
-    window_utils,
-    BufferDuration,
+    wav, window_utils, BufferDuration,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,7 +101,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Pump Windows messages (required for global hotkeys to work)
         #[cfg(windows)]
         {
-            use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE};
+            use windows::Win32::UI::WindowsAndMessaging::{
+                DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+            };
             unsafe {
                 let mut msg: MSG = std::mem::zeroed();
                 while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
@@ -116,11 +115,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Check for hotkey events (non-blocking)
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-            println!("[DEBUG] Hotkey event received: id={}, state={:?}", event.id, event.state);
+            println!(
+                "[DEBUG] Hotkey event received: id={}, state={:?}",
+                event.id, event.state
+            );
             if event.state == HotKeyState::Pressed {
                 match hotkeys.action_for_id(event.id) {
                     Some(HotkeyAction::SaveBuffer(duration)) => {
-                        handle_save(&mut audio, &vision, duration, &save_dir, show_notifications, &config)?;
+                        handle_save(
+                            &mut audio,
+                            &vision,
+                            duration,
+                            &save_dir,
+                            show_notifications,
+                            &config,
+                        )?;
                     }
                     Some(HotkeyAction::Screenshot) => {
                         handle_screenshot_only(&vision, &save_dir, show_notifications, &config)?;
@@ -342,9 +351,7 @@ fn handle_screenshot_only(
     // Capture screenshot with region if configured
     let capture_result = vision.capture_with_region(&window_info.title, &config.vision.regions)?;
 
-    let screenshot = capture_result
-        .screenshot
-        .ok_or("No screenshot captured")?;
+    let screenshot = capture_result.screenshot.ok_or("No screenshot captured")?;
 
     // Generate filename
     let timestamp = generate_timestamp();
@@ -379,8 +386,8 @@ fn handle_region_select(config: &mut Config) -> Result<(), Box<dyn std::error::E
     println!("[INFO] Target window: {}", window_info.title);
 
     // Capture current window screenshot
-    let screenshot = Screenshot::capture_foreground()
-        .map_err(|e| format!("Failed to capture window: {}", e))?;
+    let screenshot =
+        Screenshot::capture_foreground().map_err(|e| format!("Failed to capture window: {}", e))?;
 
     // Run region selection overlay
     match region_overlay::select_region(screenshot, window_info.clone()) {

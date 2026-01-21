@@ -47,8 +47,7 @@ impl TrayManager {
             None,
         );
         let menu_pause = MenuItem::with_id(MENU_PAUSE, "Pause Recording", true, None);
-        let menu_open_folder =
-            MenuItem::with_id(MENU_OPEN_FOLDER, "Open Save Folder", true, None);
+        let menu_open_folder = MenuItem::with_id(MENU_OPEN_FOLDER, "Open Save Folder", true, None);
         let menu_settings = MenuItem::with_id(MENU_SETTINGS, "Settings...", true, None);
         let menu_quit = MenuItem::with_id(MENU_QUIT, "Quit", true, None);
 
