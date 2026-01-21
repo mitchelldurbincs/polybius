@@ -26,18 +26,35 @@ func configPath() (string, error) {
 	return filepath.Join(homeDir, ".polybius", "config.toml"), nil
 }
 
-// Load loads configuration with priority: defaults < config file < env vars.
-func Load() (*Config, error) {
-	homeDir, err := os.UserHomeDir()
+// Save writes the config to the config file.
+func (c *Config) Save() error {
+	cfgPath, err := configPath()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Start with defaults
+	// Create parent directory if needed
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		return err
+	}
+
+	f, err := os.Create(cfgPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	encoder := toml.NewEncoder(f)
+	return encoder.Encode(c)
+}
+
+// Load loads configuration with priority: defaults < config file < env vars.
+func Load() (*Config, error) {
+	// Start with defaults using tilde notation for portability
 	cfg := &Config{
-		MinerDir:   filepath.Join(homeDir, "Music", "Miner"),
-		DBPath:     filepath.Join(homeDir, ".polybius", "brain.db"),
-		CEDICTPath: filepath.Join(homeDir, ".polybius", "cedict_ts.u8"),
+		MinerDir:   "~/Music/Miner",
+		DBPath:     "~/.polybius/brain.db",
+		CEDICTPath: "~/.polybius/cedict_ts.u8",
 	}
 
 	// Load from config file if it exists
@@ -47,8 +64,14 @@ func Load() (*Config, error) {
 	}
 
 	if _, err := os.Stat(cfgPath); err == nil {
+		// File exists, load it
 		if _, err := toml.DecodeFile(cfgPath, cfg); err != nil {
 			log.Printf("[WARN] Failed to parse config file: %v, using defaults", err)
+		}
+	} else if os.IsNotExist(err) {
+		// File doesn't exist, create with defaults
+		if err := cfg.Save(); err != nil {
+			log.Printf("[WARN] Failed to create default config: %v", err)
 		}
 	}
 
