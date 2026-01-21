@@ -99,12 +99,9 @@ func NewModel(cards []*ReviewCard, onRate func(cardID int64, rating int) error) 
 }
 
 func (m Model) Init() tea.Cmd {
-	// Show first card's image and play audio if available
+	// Play audio for first card if available
 	if len(m.cards) > 0 {
 		card := m.cards[0]
-		if card.ImageFile != "" {
-			m.imageWin.Show(card.ImageFile)
-		}
 		if card.AudioFile != "" {
 			m.audioPlayer.Play(card.AudioFile)
 		}
@@ -171,12 +168,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentIdx++
 				m.revealState = StateAudioOnly // Reset for next card
 
-				// Show next card's image and play audio
+				// Play audio for next card
 				if m.currentIdx < len(m.cards) {
 					nextCard := m.cards[m.currentIdx]
-					if nextCard.ImageFile != "" {
-						m.imageWin.Show(nextCard.ImageFile)
-					}
 					if nextCard.AudioFile != "" {
 						m.audioPlayer.Play(nextCard.AudioFile)
 					}

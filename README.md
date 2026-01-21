@@ -22,6 +22,7 @@ No manual recording. No downloading video files. Zero friction.
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Importing Vocabulary](#importing-vocabulary)
 - [Workflow](#workflow)
 - [Configuration](#configuration)
 - [Output Files](#output-files)
@@ -185,6 +186,22 @@ The Brain watches your capture directory and automatically processes new files:
 3. Press `Space` → Hanzi revealed
 4. Press `Space` → Pinyin + English definition
 5. Rate: `1` Again, `2` Hard, `3` Good, `4` Easy
+
+---
+
+## Importing Vocabulary
+
+If you've already learned vocabulary elsewhere (Skritter, Anki, etc.), you can import it so Polybius knows which words you already know. This improves i+1 targeting — sentences will only become cards if they contain exactly one unknown word.
+
+### Skritter Import
+
+Export your vocabulary from Skritter as a TSV file, then:
+
+```bash
+./brain/bin/polybius vocab import skritter-export.tsv
+```
+
+Imported words are marked as "known" in the database and won't generate new cards.
 
 ---
 

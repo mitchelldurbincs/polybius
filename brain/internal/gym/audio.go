@@ -17,12 +17,13 @@ type AudioPlayer struct {
 	sampleRate  beep.SampleRate
 
 	// Playback control
-	playing  bool
-	stopChan chan struct{}
+	playing    bool
+	stopChan   chan struct{}
+	generation uint64 // Increments on each Play() call to detect stale goroutines
 
 	// Progress tracking
-	currentStreamer beep.StreamSeekCloser
-	totalSamples    int
+	currentStreamer  beep.StreamSeekCloser
+	totalSamples     int
 	streamSampleRate beep.SampleRate
 
 	// Error state for UI to read
@@ -47,18 +48,20 @@ func (p *AudioPlayer) Play(filePath string) {
 	p.playing = true
 	p.stopChan = make(chan struct{})
 	p.lastError = nil
-	stopChan := p.stopChan // Local copy for goroutine
+	p.generation++ // Increment to invalidate any in-flight goroutines
+	stopChan := p.stopChan
+	gen := p.generation // Local copy for goroutine
 
 	p.mu.Unlock()
 
-	go p.playInternal(filePath, stopChan)
+	go p.playInternal(filePath, stopChan, gen)
 }
 
-func (p *AudioPlayer) playInternal(filePath string, stopChan chan struct{}) {
+func (p *AudioPlayer) playInternal(filePath string, stopChan chan struct{}, gen uint64) {
 	defer func() {
 		p.mu.Lock()
 		// Only clear playing if this is still the active playback
-		if p.stopChan == stopChan {
+		if p.generation == gen {
 			p.playing = false
 			p.currentStreamer = nil
 		}
@@ -103,6 +106,12 @@ func (p *AudioPlayer) playInternal(filePath string, stopChan chan struct{}) {
 	p.currentStreamer = streamer
 	p.totalSamples = streamer.Len()
 	p.streamSampleRate = format.SampleRate
+
+	// Check if a newer Play() call has superseded us before we start playing
+	if p.generation != gen {
+		p.mu.Unlock()
+		return // Abort - user has moved to a different card
+	}
 	p.mu.Unlock()
 
 	// Resample if needed

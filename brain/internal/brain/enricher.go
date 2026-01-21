@@ -2,10 +2,32 @@
 package brain
 
 import (
+	"strings"
 	"unicode"
 
 	"github.com/mitchelldurbin/polybius/brain/internal/nlp"
 )
+
+// normalizeChinese removes spaces between Chinese characters.
+// Windows OCR often inserts spaces between CJK characters, which breaks segmentation.
+func normalizeChinese(text string) string {
+	runes := []rune(text)
+	var result strings.Builder
+	result.Grow(len(text))
+
+	for i, r := range runes {
+		// Skip spaces that are between two Chinese characters
+		if r == ' ' && i > 0 && i < len(runes)-1 {
+			prevIsChinese := unicode.Is(unicode.Han, runes[i-1])
+			nextIsChinese := unicode.Is(unicode.Han, runes[i+1])
+			if prevIsChinese && nextIsChinese {
+				continue
+			}
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
+}
 
 // containsChinese returns true if the string contains at least one Chinese character
 func containsChinese(s string) bool {
@@ -51,7 +73,9 @@ func NewEnricher(cedictPath string) (*Enricher, error) {
 }
 
 func (e *Enricher) Enrich(text string) *EnrichedText {
-	words := e.segmenter.Segment(text)
+	// Normalize text to remove spaces between Chinese characters (Windows OCR artifact)
+	normalized := normalizeChinese(text)
+	words := e.segmenter.Segment(normalized)
 
 	var enriched []EnrichedWord
 	for _, word := range words {
