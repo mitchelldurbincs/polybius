@@ -91,15 +91,34 @@ impl TrayManager {
     }
 }
 
-/// Create a simple default icon (red circle for recording)
+/// Create a simple default icon (pickaxe inside red circle)
 fn create_default_icon() -> Result<tray_icon::Icon, Box<dyn std::error::Error>> {
-    // Create a simple 32x32 RGBA icon (red circle)
+    // Create a 32x32 RGBA icon (pickaxe inside red circle)
     let size = 32u32;
     let mut rgba = vec![0u8; (size * size * 4) as usize];
 
     let center = size as f32 / 2.0;
     let radius = center - 2.0;
 
+    // Helper to set a pixel with color
+    let set_pixel = |rgba: &mut [u8], x: i32, y: i32, r: u8, g: u8, b: u8, a: u8| {
+        if x >= 0 && x < size as i32 && y >= 0 && y < size as i32 {
+            let idx = ((y as u32 * size + x as u32) * 4) as usize;
+            rgba[idx] = r;
+            rgba[idx + 1] = g;
+            rgba[idx + 2] = b;
+            rgba[idx + 3] = a;
+        }
+    };
+
+    // Helper to check if point is inside circle
+    let in_circle = |x: f32, y: f32| -> bool {
+        let dx = x - center;
+        let dy = y - center;
+        (dx * dx + dy * dy).sqrt() <= radius
+    };
+
+    // First pass: draw the red circle
     for y in 0..size {
         for x in 0..size {
             let dx = x as f32 - center;
@@ -122,7 +141,39 @@ fn create_default_icon() -> Result<tray_icon::Icon, Box<dyn std::error::Error>> 
                 rgba[idx + 2] = 50;
                 rgba[idx + 3] = alpha;
             }
-            // else: transparent (already 0)
+        }
+    }
+
+    // Second pass: draw the pickaxe in white
+    // Pickaxe handle (diagonal from bottom-left to center-ish)
+    for i in 0..14 {
+        let x = 8 + i;
+        let y = 24 - i;
+        if in_circle(x as f32, y as f32) {
+            set_pixel(&mut rgba, x, y, 255, 255, 255, 255);
+            set_pixel(&mut rgba, x + 1, y, 255, 255, 255, 255);
+            set_pixel(&mut rgba, x, y + 1, 255, 255, 255, 255);
+        }
+    }
+
+    // Pick head (horizontal-ish line going right from top of handle)
+    for i in 0..10 {
+        let x = 18 + i;
+        let y = 10 + i / 3;
+        if in_circle(x as f32, y as f32) {
+            set_pixel(&mut rgba, x, y, 255, 255, 255, 255);
+            set_pixel(&mut rgba, x, y + 1, 255, 255, 255, 255);
+            set_pixel(&mut rgba, x, y - 1, 255, 255, 255, 255);
+        }
+    }
+
+    // Pick point (going left from top of handle)
+    for i in 0..8 {
+        let x = 18 - i;
+        let y = 10 - i / 2;
+        if in_circle(x as f32, y as f32) {
+            set_pixel(&mut rgba, x, y, 255, 255, 255, 255);
+            set_pixel(&mut rgba, x, y + 1, 255, 255, 255, 255);
         }
     }
 
