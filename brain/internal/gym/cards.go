@@ -2,6 +2,7 @@
 package gym
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 type CardListItem struct {
 	ID         int64
 	TargetWord string
+	Pinyin     string
 	Sentence   string
 	DueDate    *time.Time
 	Stability  float64
@@ -24,9 +26,12 @@ type CardListItem struct {
 
 // CardsModel is the Bubbletea model for the cards list view
 type CardsModel struct {
-	cards  []*CardListItem
-	cursor int
-	goBack bool
+	cards     []*CardListItem
+	cursor    int
+	goBack    bool
+	addWord   func(context.Context, string, string) (string, error)
+	adding    bool
+	addStatus string
 }
 
 // NewCardsModel creates a new cards list model
@@ -46,8 +51,29 @@ func (m CardsModel) Init() tea.Cmd {
 // Update implements tea.Model
 func (m CardsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case wordAddedMsg:
+		m.adding = false
+		m.addStatus = msg.status
+		if msg.err != nil {
+			m.addStatus = "Skritter: " + msg.err.Error()
+		}
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "s":
+			if m.addWord != nil && !m.adding && m.cursor < len(m.cards) {
+				word := m.cards[m.cursor].TargetWord
+				reading := m.cards[m.cursor].Pinyin
+				add := m.addWord
+				m.adding = true
+				m.addStatus = "Adding " + word + " to Skritter…"
+				return m, func() tea.Msg {
+					ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					defer cancel()
+					status, err := add(ctx, word, reading)
+					return wordAddedMsg{status, err}
+				}
+			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -74,6 +100,10 @@ func (m CardsModel) View() string {
 	// Title
 	sb.WriteString(TitleStyle.Render("ALL CARDS"))
 	sb.WriteString("\n\n")
+
+	if m.addStatus != "" {
+		sb.WriteString(m.addStatus + "\n\n")
+	}
 
 	// Empty state
 	if len(m.cards) == 0 {
@@ -153,6 +183,9 @@ func (m CardsModel) renderNavigation() string {
 	var parts []string
 
 	parts = append(parts, fmt.Sprintf("%s/%s Navigate", NavKeyStyle.Render("j"), NavKeyStyle.Render("k")))
+	if m.addWord != nil {
+		parts = append(parts, "[s] Add to Skritter")
+	}
 	parts = append(parts, fmt.Sprintf("%s Back", NavKeyStyle.Render("[esc]")))
 
 	return NavStyle.Render(strings.Join(parts, "    "))
@@ -170,4 +203,15 @@ func truncateSentence(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen-3]) + "..."
+}
+
+// WithWordAdder keeps network operations outside the UI and runs them asynchronously.
+func (m CardsModel) WithWordAdder(add func(context.Context, string, string) (string, error)) CardsModel {
+	m.addWord = add
+	return m
+}
+
+type wordAddedMsg struct {
+	status string
+	err    error
 }

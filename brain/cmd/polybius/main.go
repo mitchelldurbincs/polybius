@@ -20,8 +20,16 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: polybius <brain|gym|vocab>")
+		fmt.Println("Usage: polybius <brain|gym|vocab|skritter>")
 		os.Exit(1)
+	}
+
+	if os.Args[1] == "skritter" {
+		if err := runSkritter(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Load config once at startup
@@ -155,6 +163,7 @@ func runCardsList(session *gym.Session) {
 	}
 
 	model := gym.NewCardsModel(cards)
+	model = model.WithWordAdder(skritterWordAdder())
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		log.Printf("Error running cards list: %v", err)
