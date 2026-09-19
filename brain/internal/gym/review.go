@@ -247,6 +247,7 @@ func (s *Session) GetAllCardsForList() ([]*CardListItem, error) {
 		}
 
 		items = append(items, &CardListItem{
+			Pinyin:     c.TargetPinyin,
 			ID:         c.ID,
 			TargetWord: c.TargetWord,
 			Sentence:   sentence,

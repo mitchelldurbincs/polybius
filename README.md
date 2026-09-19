@@ -621,3 +621,23 @@ MIT License.
 - [Bubbletea](https://github.com/charmbracelet/bubbletea) - TUI framework
 - [CC-CEDICT](https://cc-cedict.org/) - Chinese-English dictionary
 - The language learning community for inspiration
+
+## Add words to Skritter
+
+In Gym's **All Cards** screen, select a card and press **s** to add its target word to Skritter. The request runs in the background and shows the result without changing the local card or its review schedule.
+
+From the `brain` directory, you can also add words directly:
+
+```sh
+go run ./cmd/polybius skritter init                       # Find or create the private Polybius list
+go run ./cmd/polybius skritter add 你好 学习                # Add one or more words
+go run ./cmd/polybius skritter add --pinyin 'xue2 xi2' 学习 # Disambiguate with numbered pinyin
+```
+
+Create an integration token at [Skritter account integrations](https://skritter.com/account/integrations). Set `SKRITTER_TOKEN` in the process environment, or save just the token in `~/.polybius/skritter-token` with owner-only permissions (`chmod 600`). The environment variable takes precedence. Credentials are not stored in the repository or application TOML.
+
+The integration searches your Chinese custom lists for **Polybius**, creates it with a **Words** section when absent, and skips vocabulary already present anywhere in the list. It resolves all requested words before writing, preserves existing section rows, and reads the section back before reporting success. Unknown or ambiguous entries produce an error; supplying numbered pinyin can disambiguate a word. It does not create new dictionary entries or enroll words in Skritter's study queue.
+
+The client uses Skritter's legacy v0 API, following the same token authentication as yinyang. HTTP handling, list/word policy and credential loading live in `brain/internal/skritter`; Gym and the command line share that service. Tests cover duplicate additions, failed reads, unconfirmed writes, redirects, vocabulary matching and background UI behavior. Live list creation, adding a word and duplicate detection were verified on September 19, 2026; the temporary test entry was removed.
+
+Skritter replaces whole sections when editing rows. Requests are serialized within a service, but simultaneous edits from another app or process are not atomic; avoid editing the same section concurrently. If a request times out, retrying checks membership before adding again.
